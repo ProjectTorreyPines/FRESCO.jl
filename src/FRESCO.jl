@@ -12,11 +12,11 @@ using StaticArrays
 const μ₀ = π * 4e-7
 const twopi = 2π
 
-include("Pinata.jl")
+include("fem/Pinata.jl")
 
-include("mesh.jl")
+include("fem/mesh.jl")
 
-include("GSsolve.jl")
+include("fem/GSsolve.jl")
 
 export create_mesh
 export invert_GS
