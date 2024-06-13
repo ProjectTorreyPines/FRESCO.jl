@@ -1,4 +1,4 @@
-function invert_GS!(canvas::Canvas, Ψbnd::Function, Jt::Function=(r,z)->0.0)
+function invert_GS!(canvas::Canvas, Ψbnd::Function, Jt::Union{Nothing,Function}=nothing)
 
     Rs, Zs, Ψ, a, b, c, MST, u, A, B, M, S = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._a, canvas._b, canvas._c, canvas._MST, canvas._u, canvas._A, canvas._B, canvas._M, canvas._S
 
@@ -19,8 +19,8 @@ function invert_GS!(canvas::Canvas, Ψbnd::Function, Jt::Function=(r,z)->0.0)
 
     for j in 0:Nz
         for i in 1:Nr-1
-            S[i+1, j+1] = twopi * μ₀ * Rs[i+1] * Jt(Rs[i+1], Zs[j+1])
-            S[i+1, j+1] -= (a[i+1] * (A[i+2]  + j * B[i+2]) - b[i+1]* (A[i+1]  + j * B[i+1]) + c[i+1] * (A[i]  + j * B[i])) / hr2
+            S[i+1, j+1] = -(a[i+1] * (A[i+2]  + j * B[i+2]) - b[i+1]* (A[i+1]  + j * B[i+1]) + c[i+1] * (A[i]  + j * B[i])) / hr2
+            (Jt !== nothing) && (S[i+1, j+1] += twopi * μ₀ * Rs[i+1] * Jt(Rs[i+1], Zs[j+1]))
         end
         S[1, j+1]   = Ψbnd(Rs[1],   Zs[j+1]) - (A[1]   + j * B[1])
         S[end, j+1] = Ψbnd(Rs[end], Zs[j+1]) - (A[end] + j * B[end])

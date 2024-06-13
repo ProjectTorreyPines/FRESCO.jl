@@ -2,6 +2,7 @@ struct Canvas{T<:Real}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
+    Ip::T
     _a::Vector{T}
     _b::Vector{T}
     _c::Vector{T}
@@ -15,13 +16,21 @@ end
 
 
 function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
-    ipl = IMAS.get_build_index(dd.build.layer; type=IMAS._plasma_)
-    r, z = dd.build.layer[ipl].outline.r, dd.build.layer[ipl].outline.z
+
+    # define grid
+    layer = dd.build.layer
+    k = IMAS.get_build_index(layer; type=IMAS._plasma_)
+    r, z = layer[k].outline.r, layer[k].outline.z
     Rs, Zs = range(minimum(r), maximum(r), Nr), range(minimum(z), maximum(z), Nz)
-    return Canvas(Rs, Zs)
+
+    # define current
+    eqt = dd.equilibrium.time_slice[]
+    Ip = eqt.global_quantities.ip
+
+    return Canvas(Rs, Zs, Ip)
 end
 
-function Canvas(Rs, Zs)
+function Canvas(Rs, Zs, Ip)
     Nr, Nz = length(Rs) - 1, length(Zs) - 1
     Ψ = zeros(Nr+1, Nz+1)
     hr = (Rs[end] - Rs[1]) / Nr
@@ -36,5 +45,5 @@ function Canvas(Rs, Zs)
     M = Tridiagonal(zeros(Nr), zeros(Nr+1), zeros(Nr))
     S = zero(Ψ)
 
-    return Canvas(Rs, Zs, Ψ, a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, a, b, c, MST, u, A, B, M, S)
 end
