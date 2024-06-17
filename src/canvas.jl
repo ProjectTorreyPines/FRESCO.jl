@@ -3,6 +3,8 @@ struct Canvas{T<:Real}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
     Ip::T
+    _U::Matrix{T}
+    _Jt::Matrix{T}
     _a::Vector{T}
     _b::Vector{T}
     _c::Vector{T}
@@ -38,6 +40,8 @@ function Canvas(Rs, Zs, Ip)
     c = @. (1.0 - hr / (2Rs)) ^ -1
     b = a + c
     Ψ = zeros(Nr + 1, Nz + 1)
+    U = zero(Ψ)
+    Jt = zero(Ψ)
     u = zero(Ψ)
     A = zero(Rs)
     B = zero(Rs)
@@ -45,5 +49,5 @@ function Canvas(Rs, Zs, Ip)
     M = Tridiagonal(zeros(Nr), zeros(Nr+1), zeros(Nr))
     S = zero(Ψ)
 
-    return Canvas(Rs, Zs, Ψ, Ip, a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, U, Jt, a, b, c, MST, u, A, B, M, S)
 end

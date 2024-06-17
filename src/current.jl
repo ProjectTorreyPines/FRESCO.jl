@@ -12,3 +12,23 @@ function initial_current(canvas::Canvas, R::Real, Z::Real)
         return 0.0
     end
 end
+
+function gridded_Jtor!(canvas::Canvas, Jtor::Nothing)
+    canvas._Jt .= 0.0
+    return canvas
+end
+
+function gridded_Jtor!(canvas::Canvas, Jtor)
+    Rs, Zs, Jt = canvas.Rs, canvas.Zs, canvas._Jt
+    Nr, Nz = length(Rs), length(Zs)
+    for (j, z) in enumerate(Zs)
+        if (j === 1) || (j === Nz + 1)
+            Jt[:, j] .= 0.0
+        else
+            for (i, r) in enumerate(Rs)
+                Jt[i, j] = ((i === 1) || (i === Nr + 1)) ? 0.0 : Jtor(r, z)
+            end
+        end
+    end
+    return canvas
+end

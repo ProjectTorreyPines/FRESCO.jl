@@ -3,6 +3,8 @@ module FRESCO
 
 using LinearAlgebra
 import IMAS
+using VacuumFields: Green
+using FuseUtils: trapz
 
 const μ₀ = π * 4e-7
 const twopi = 2π
