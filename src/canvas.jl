@@ -1,8 +1,12 @@
-struct Canvas{T<:Real}
+mutable struct Canvas{T<:Real}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
     Ip::T
+    Raxis::T
+    Zaxis::T
+    Ψaxis::T
+    Ψbnd::T
     _U::Matrix{T}
     _Jt::Matrix{T}
     _a::Vector{T}
@@ -48,6 +52,5 @@ function Canvas(Rs, Zs, Ip)
     MST = [sqrt(2 / Nz) * sin(π * j * k / Nz) for j in 0:Nz, k in 0:Nz]
     M = Tridiagonal(zeros(Nr), zeros(Nr+1), zeros(Nr))
     S = zero(Ψ)
-
-    return Canvas(Rs, Zs, Ψ, Ip, U, Jt, a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, 0.0, 0.0, 0.0, 0.0, U, Jt, a, b, c, MST, u, A, B, M, S)
 end
