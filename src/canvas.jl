@@ -1,4 +1,4 @@
-mutable struct Canvas{T<:Real}
+mutable struct Canvas{T<:Real, I<:IMAS.Interpolations.AbstractInterpolation}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
@@ -9,6 +9,8 @@ mutable struct Canvas{T<:Real}
     Ψbnd::T
     _U::Matrix{T}
     _Jt::Matrix{T}
+    _Ψitp::I
+    _bnd::Vector{Tuple{T,T}}
     _a::Vector{T}
     _b::Vector{T}
     _c::Vector{T}
@@ -36,21 +38,26 @@ function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
     return Canvas(Rs, Zs, Ip)
 end
 
-function Canvas(Rs, Zs, Ip)
+function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}, Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}, Ip::T) where {T <: Real}
     Nr, Nz = length(Rs) - 1, length(Zs) - 1
-    Ψ = zeros(Nr+1, Nz+1)
     hr = (Rs[end] - Rs[1]) / Nr
     a = @. (1.0 + hr / (2Rs)) ^ -1
     c = @. (1.0 - hr / (2Rs)) ^ -1
     b = a + c
-    Ψ = zeros(Nr + 1, Nz + 1)
+    Ψ = zeros(T, Nr + 1, Nz + 1)
     U = zero(Ψ)
     Jt = zero(Ψ)
+    Ψitp = IMAS.ψ_interpolant(Rs, Zs, Ψ).PSI_interpolant
     u = zero(Ψ)
     A = zero(Rs)
     B = zero(Rs)
     MST = [sqrt(2 / Nz) * sin(π * j * k / Nz) for j in 0:Nz, k in 0:Nz]
-    M = Tridiagonal(zeros(Nr), zeros(Nr+1), zeros(Nr))
+    M = Tridiagonal(zeros(T, Nr), zeros(T, Nr+1), zeros(T, Nr))
     S = zero(Ψ)
-    return Canvas(Rs, Zs, Ψ, Ip, 0.0, 0.0, 0.0, 0.0, U, Jt, a, b, c, MST, u, A, B, M, S)
+    zt = zero(T)
+    return Canvas(Rs, Zs, Ψ, Ip, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], a, b, c, MST, u, A, B, M, S)
+end
+
+function update_interpolation!(canvas::Canvas)
+    canvas._Ψitp = IMAS.ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ).PSI_interpolant
 end
