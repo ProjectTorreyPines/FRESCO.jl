@@ -11,6 +11,8 @@ mutable struct Canvas{T<:Real, I<:IMAS.Interpolations.AbstractInterpolation}
     _Jt::Matrix{T}
     _Ψitp::I
     _bnd::Vector{Tuple{T,T}}
+    _rextrema::Tuple{T,T}
+    _zextrema::Tuple{T,T}
     _a::Vector{T}
     _b::Vector{T}
     _c::Vector{T}
@@ -55,7 +57,7 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     M = Tridiagonal(zeros(T, Nr), zeros(T, Nr+1), zeros(T, Nr))
     S = zero(Ψ)
     zt = zero(T)
-    return Canvas(Rs, Zs, Ψ, Ip, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], (0.0, 0.0), (0.0, 0.0), a, b, c, MST, u, A, B, M, S)
 end
 
 function update_interpolation!(canvas::Canvas)

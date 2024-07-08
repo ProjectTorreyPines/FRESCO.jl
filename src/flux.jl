@@ -149,51 +149,28 @@ end
 
 psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
 
-
 function boundary!(canvas::Canvas)
     B = IMAS.flux_surface(canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, Float64[], Float64[], canvas.Ψbnd, :closed).prpz
     @assert length(B) == 1
     canvas._bnd = collect(zip(B[1].r, B[1].z))
+    canvas._rextrema = extrema(x for (x,_) in canvas._bnd)
+    canvas._zextrema = extrema(y for (_,y) in canvas._bnd)
 end
-
-# THIS DOESN'T WORK - GRADIENT OF PSI ALONG VECTOR TO AXIS CAN CHANGE SIGN IN REGION OF INTEREST
-# function in_core(r::Real, z::Real, canvas::Canvas; update_Ψitp::Bool=true)
-#     update_Ψitp && update_interpolation!(canvas)
-#     Ψitp = canvas._Ψitp
-#     psi = Ψitp(r, z)
-#     psin = psinorm(psi, canvas)
-#     psin > 1.0 && return false
-
-#     # otherwise inside core, psi increase from axis to edge for Ip>0, decrease for Ip<0
-#     Ip, Ra, Za = canvas.Ip, canvas.Raxis, canvas.Zaxis
-#     Xa = @SVector[r - Ra, z - Za] # vector from axis to (r, z)
-#     ∇Ψ = Interpolations.gradient(Ψitp, r, z)
-#     G = dot(Xa, ∇Ψ) # gradient of psi in direction of axis to (r, z)
-#     return G * sign(Ip)
-# #    return sign(G) == sign(Ip)
-# end
 
 function in_core(r::Real, z::Real, canvas::Canvas)
 
-    # First check psinorm value
+    # Check outside bounding box
+    rmin, rmax = canvas._rextrema
+    (r < rmin || r > rmax) && return false
+
+    zmin, zmax = canvas._zextrema
+    (z < zmin || z > zmax) && return false
+
+    # Check psinorm value
     Ψitp = canvas._Ψitp
     psi = Ψitp(r, z)
     psin = psinorm(psi, canvas)
     psin > 1.0 && return false
-
-    # THIS IS SLOW... Check outside bounding box
-    # rmin, rmax = Inf, -Inf
-    # zmin, zmax = Inf, -Inf
-    # for (x, y) in canvas._bnd
-    #     (x < rmin) && (rmin = x)
-    #     (x > rmax) && (rmax = x)
-    #     (y < zmin) && (zmin = y)
-    #     (y > zmax) && (zmax = y)
-    # end
-    # z < zmin && return false
-    # z > zmax && return false
-    # r < rmin && return false
-    # r > rmax && return false
 
     # Finally make sure it's in the boundary
     return inpolygon((r, z), canvas._bnd) == 1
