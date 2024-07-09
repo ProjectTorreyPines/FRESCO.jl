@@ -8,6 +8,7 @@ using FuseUtils: trapz
 using StaticArrays: @SVector
 import Interpolations
 using PolygonOps: inpolygon
+using HCubature: hquadrature
 
 const μ₀ = π * 4e-7
 const twopi = 2π
