@@ -51,14 +51,14 @@ function BetapIp(betap,alpha_m,alpha_n)
     return BetapIp(betap,alpha_m, alpha_n,zero(betap),zero(betap))
 end
 
-function shape_integral(canvas::Canvas, profile::BetapIp, psi_norm)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvis.Ψbnd
+function shape_integral(canvas::Canvas, profile::Union{BetapIp, PaxisIp}, psi_norm)
+    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
     I, _ = hquadrature(x -> (1 - x^profile.alpha_m)^profile.alpha_n, psi_norm, 1.0)
     return I*(psi_bdry - psi_axis)
 end
 
 function Jtor(canvas::Canvas, profile::BetapIp)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvis.Ψbnd
+    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
     Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
     psi_norm = clamp.((Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
     Raxis, Zaxis = canvas.Raxis, canvas.Zaxis
@@ -85,7 +85,7 @@ function Jtor(canvas::Canvas, profile::BetapIp)
     #todo better integration
     p_int = sum(pfunc)*dR*dZ
 
-    LBeta0 = (-profile.Betap*(μ₀/(8*pi))*Raxis*Ip^2)/p_int
+    LBeta0 = (-profile.betap*(μ₀/(8*pi))*Raxis*Ip^2)/p_int
 
     #better integration
     IR = sum(IR_mat)*dR*dZ
@@ -122,8 +122,8 @@ function PaxisIp(paxis, alpha_m, alpha_n)
     return PaxisIp(paxis, alpha_m, alpha_n, zero(paxis), zero(paxis))
 end
 
-function Jtor(canvas::Canvas, profile::BetapIp)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvis.Ψbnd
+function Jtor(canvas::Canvas, profile::PaxisIp)
+    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
     Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
     psi_norm = clamp.((Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
     Raxis, Zaxis = canvas.Raxis, canvas.Zaxis
@@ -193,9 +193,9 @@ end
 
 function Jtor(canvas::Canvas, profile::PprimeFFprime)
 
-    psi_axis, psi_bdry = canvas.Ψaxis, canvis.Ψbnd
+    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
     psi_norm = clamp.((canvas.Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
-    
+
     Jt = zero(canvas.Ψ)
     for (i,R) in enumerate(canvas.Rs)
         for (j,Z) in enumerate(canvas.Zs)
