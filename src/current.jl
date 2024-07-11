@@ -44,6 +44,30 @@ mutable struct BetapIp{T} <: CurrentProfile
     L::T
 end
 
+mutable struct PaxisIp{T} <: CurrentProfile
+    paxis::T
+    alpha_m::T
+    alpha_n::T
+    L::T
+    Beta0::T
+end
+
+struct PprimeFFprime{F<:Function} <: CurrentProfile
+    pprime::F
+    ffprime::F
+end
+
+shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
+
+function shape_integral(canvas::Canvas, profile::Union{BetapIp, PaxisIp}, psi_norm)
+    am, an = profile.alpha_m, profile.alpha_n
+    invam = 1.0 / am
+    man = -an
+    invam_p1 = 1.0 + 1.0 / am
+    I = F21(invam, man, invam_p1, 1.0 ^ am) - psi_norm * F21(invam, man, invam_p1, psi_norm ^ am)
+    return I * (canvas.Ψbnd - canvas.Ψaxis)
+end
+
 function BetapIp(betap,alpha_m,alpha_n)
     if alpha_m < 0 || alpha_n < 0
         @error "alpha_m/n must be positive"
@@ -51,68 +75,52 @@ function BetapIp(betap,alpha_m,alpha_n)
     return BetapIp(betap,alpha_m, alpha_n,zero(betap),zero(betap))
 end
 
-function shape_integral(canvas::Canvas, profile::Union{BetapIp, PaxisIp}, psi_norm)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
-    I, _ = hquadrature(x -> (1 - x^profile.alpha_m)^profile.alpha_n, psi_norm, 1.0)
-    return I*(psi_bdry - psi_axis)
-end
 
 function Jtor(canvas::Canvas, profile::BetapIp)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
-    Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
-    psi_norm = clamp.((Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
-    Raxis, Zaxis = canvas.Raxis, canvas.Zaxis
-    Ip = canvas.Ip
+    Rs, Zs, Ψ, Ip, Raxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas.Ψaxis, canvas.Ψbnd
 
-    jtor_shape = (1.0 .- psi_norm.^profile.alpha_m).^profile.alpha_n
-
-    pfunc = zero(Ψ)
-    IR_mat = zero(Ψ)
-    I_R_mat = zero(Ψ)
-    for (i, r) in enumerate(Rs)
-        for (j, z) in enumerate(Zs)
-            psin = psi_norm[i,j]
+    p_int = zero(eltype(Ψ))
+    IR    = zero(eltype(Ψ))
+    I_R   = zero(eltype(Ψ))
+    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
+    for (i,r) in enumerate(Rs)
+        r_Raxis = r / Raxis
+        Raxis_r = Raxis / r
+        for j in eachindex(Zs)
+            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
             if 0.0 <= psin <= 1.0
-                pfunc[i,j] = r*shape_integral(canvas, profile, psin)
-                IR_mat[i,j] = jtor_shape[i,j]*r/Raxis
-                I_R_mat[i,j] = jtor_shape[i,j]*Raxis/r
+                jtor_shape = shape_function(psin, profile)
+                p_int += r * shape_integral(canvas, profile, psin)
+                IR  += jtor_shape * r_Raxis
+                I_R += jtor_shape * Raxis_r
             end
         end
     end
-    dR = step(Rs)
-    dZ = step(Zs)
+    dRdZ = step(Rs) * step(Zs)
 
-    #todo better integration
-    p_int = sum(pfunc)*dR*dZ
+    p_int *= dRdZ
+    IR    *= dRdZ
+    I_R   *= dRdZ
 
-    LBeta0 = (-profile.betap*(μ₀/(8*pi))*Raxis*Ip^2)/p_int
-
-    #better integration
-    IR = sum(IR_mat)*dR*dZ
-    I_R = sum(I_R_mat)*dR*dZ
-
-    L = Ip / I_R - LBeta0*(IR/I_R - 1)
+    LBeta0 = (-profile.betap * (μ₀ / (8π)) * Raxis * Ip ^ 2) / p_int
+    L = Ip / I_R - LBeta0 * (IR / I_R - 1)
     Beta0 = LBeta0/L
 
-    Jtor=zero(Ψ)
+    Jtor = canvas._Jt
     for (i,r) in enumerate(Rs)
-        for (j,z) in enumerate(Zs)
-            if 0.0 <= psi_norm[i,j] <= 1.0
-                Jtor[i,j] = L * (Beta0 * r/Raxis + (1 - Beta0) * Raxis/r) * jtor_shape[i,j]
+        r_Raxis = r / Raxis
+        Raxis_r = Raxis / r
+        for j in eachindex(Zs)
+            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
+            if 0.0 <= psin <= 1.0
+                jtor_shape = shape_function(psin, profile)
+                Jtor[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
             end
         end
     end
     profile.L = L
     profile.Beta0 = Beta0
     return Jtor
-end
-
-mutable struct PaxisIp{T} <: CurrentProfile
-    paxis::T
-    alpha_m::T
-    alpha_n::T
-    L::T
-    Beta0::T
 end
 
 function PaxisIp(paxis, alpha_m, alpha_n)
@@ -123,42 +131,42 @@ function PaxisIp(paxis, alpha_m, alpha_n)
 end
 
 function Jtor(canvas::Canvas, profile::PaxisIp)
-    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
-    Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
-    psi_norm = clamp.((Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
-    Raxis, Zaxis = canvas.Raxis, canvas.Zaxis
-    Ip = canvas.Ip
+    Rs, Zs, Ψ, Ip, Raxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas.Ψaxis, canvas.Ψbnd
 
-    jtor_shape = (1.0 .- psi_norm.^profile.alpha_m).^profile.alpha_n
-
-    IR_mat = zero(Ψ)
-    I_R_mat = zero(Ψ)
+    IR    = zero(eltype(Ψ))
+    I_R   = zero(eltype(Ψ))
+    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
     for (i, r) in enumerate(Rs)
-        for (j, z) in enumerate(Zs)
-            psin = psi_norm[i,j]
+        r_Raxis = r / Raxis
+        Raxis_r = Raxis / r
+        for j in eachindex(Zs)
+            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
             if 0.0 <= psin <= 1.0
-                IR_mat[i,j] = jtor_shape[i,j]*r/Raxis
-                I_R_mat[i,j] = jtor_shape[i,j]*Raxis/r
+                jtor_shape = shape_function(psin, profile)
+                IR  += jtor_shape * r_Raxis
+                I_R += jtor_shape * Raxis_r
             end
         end
     end
-    dR = step(Rs)
-    dZ = step(Zs)
+    dRdZ = step(Rs) * step(Zs)
 
-    #better integration
-    IR = sum(IR_mat)*dR*dZ
-    I_R = sum(I_R_mat)*dR*dZ
+    IR  *= dRdZ
+    I_R *= dRdZ
 
-    LBeta0 = -profile.paxis * Raxis / shape_integral(canvas,profile,0.0)
+    LBeta0 = -profile.paxis * Raxis / shape_integral(canvas, profile, 0.0)
 
-    L = Ip / I_R - LBeta0 * (IR/I_R - 1)
-    Beta0 = LBeta0/L
+    L = Ip / I_R - LBeta0 * (IR / I_R - 1)
+    Beta0 = LBeta0 / L
 
-    Jtor=zero(Ψ)
+    Jtor = canvas._Jt
     for (i,r) in enumerate(Rs)
-        for (j,z) in enumerate(Zs)
-            if 0.0 <= psi_norm[i,j] <= 1.0
-                Jtor[i,j] = L * (Beta0 * r/Raxis + (1 - Beta0) * Raxis/r) * jtor_shape[i,j]
+        r_Raxis = r / Raxis
+        Raxis_r = Raxis / r
+        for j in eachindex(Zs)
+            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
+            if 0.0 <= psin <= 1.0
+                jtor_shape = shape_function(psin, profile)
+                Jtor[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
             end
         end
     end
@@ -168,19 +176,13 @@ function Jtor(canvas::Canvas, profile::PaxisIp)
 end
 
 function pprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    shape = (1 - clamp(psi_norm,0,1)^p.alpha_m)^p.alpha_n
-    return (p.L*p.Beta0/canvas.Raxis)*shape
+    psin = clamp(psi_norm, 0, 1)
+    return (p.L*p.Beta0/canvas.Raxis) * shape_function(psin, profile)
 end
 
 function ffprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    shape = (1 - clamp(psi_norm,0,1)^p.alpha_m)^p.alpha_n
-    return μ₀*p.L*(1 - p.Beta0)*canvas.Raxis*shape
-end
-
-
-struct PprimeFFprime{F<:Function} <: CurrentProfile
-    pprime::F
-    ffprime::F
+    psin = clamp(psi_norm, 0, 1)
+    return μ₀*p.L*(1 - p.Beta0) * shape_function(psin, profile)
 end
 
 function pprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
@@ -192,16 +194,14 @@ function ffprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
 end
 
 function Jtor(canvas::Canvas, profile::PprimeFFprime)
-
-    psi_axis, psi_bdry = canvas.Ψaxis, canvas.Ψbnd
-    psi_norm = clamp.((canvas.Ψ .- psi_axis)/(psi_bdry - psi_axis), 0, 1)
-
-    Jt = zero(canvas.Ψ)
+    Ψ, Ψaxis, Ψbnd = canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd
+    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
+    Jt = canvas._Jt
     for (i,R) in enumerate(canvas.Rs)
-        for (j,Z) in enumerate(canvas.Zs)
-            psin = psi_norm[i,j]
+        for j in eachindex(canvas.Zs)
+            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0, 1)
             if 0.0 <= psin <= 1.0
-                Jt[i,j] = R*pprime(profile,psin) + ffprime(profile,psin)/(R*μ₀)
+                Jt[i, j] = R * pprime(canvas, profile, psin) + ffprime(canvas, profile, psin) / (R * μ₀)
             end
         end
     end

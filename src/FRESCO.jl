@@ -8,7 +8,7 @@ using FuseUtils: trapz
 using StaticArrays: @SVector
 import Interpolations
 using PolygonOps: inpolygon
-using HCubature: hquadrature
+import HypergeometricFunctions: _₂F₁ as F21
 
 const μ₀ = π * 4e-7
 const twopi = 2π
@@ -22,6 +22,5 @@ export Canvas
 export flux, psinorm
 export invert_GS!, invert_GS_zero_bnd!
 export initial_current
-
 
 end
