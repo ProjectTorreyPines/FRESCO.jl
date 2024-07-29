@@ -1,8 +1,11 @@
-function invert_GS!(canvas::Canvas, Ψvac::Function, Jtor::Union{Nothing,Function}=nothing)
+function invert_GS!(canvas::Canvas, Ψvac::Function, Jtor::Union{Nothing,Function})
+    gridded_Jtor!(canvas, Jtor)
+    invert_GS!(canvas, Ψvac)
+end
 
+function invert_GS!(canvas::Canvas, Ψvac::Function)
     Rs, Zs, Ψ, Jt, a, b, c, MST, u, A, B, M, S = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Jt, canvas._a, canvas._b, canvas._c, canvas._MST, canvas._u, canvas._A, canvas._B, canvas._M, canvas._S
 
-    gridded_Jtor!(canvas, Jtor)
     include_Jt = any(J !== 0.0 for J in canvas._Jt)
 
     Nr = length(Rs) - 1
@@ -53,11 +56,13 @@ function invert_GS!(canvas::Canvas, Ψvac::Function, Jtor::Union{Nothing,Functio
 end
 
 # Invert GS with U=0 on boundary -- needed for von Hagenow boundary integral
-function invert_GS_zero_bnd!(canvas::Canvas, Jtor::Union{Nothing,Function}=nothing)
-
-    Rs, Zs, U, Jt, a, b, c, MST, u, M, S = canvas.Rs, canvas.Zs, canvas._U, canvas._Jt, canvas._a, canvas._b, canvas._c, canvas._MST, canvas._u, canvas._M, canvas._S
-
+function invert_GS_zero_bnd!(canvas::Canvas, Jtor::Union{Nothing,Function})
     gridded_Jtor!(canvas, Jtor)
+    invert_GS_zero_bnd!(canvas)
+end
+
+function invert_GS_zero_bnd!(canvas::Canvas)
+    Rs, Zs, U, Jt, a, b, c, MST, u, M, S = canvas.Rs, canvas.Zs, canvas._U, canvas._Jt, canvas._a, canvas._b, canvas._c, canvas._MST, canvas._u, canvas._M, canvas._S
 
     Nr = length(Rs) - 1
     Nz = length(Zs) - 1

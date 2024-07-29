@@ -157,6 +157,11 @@ function boundary!(canvas::Canvas)
     canvas._zextrema = extrema(y for (_,y) in canvas._bnd)
 end
 
+function update_bounds!(canvas; update_Ψitp::Bool=true)
+    flux_bounds!(canvas; update_Ψitp)
+    boundary!(canvas)
+end
+
 function in_core(r::Real, z::Real, canvas::Canvas)
 
     # Check outside bounding box
@@ -171,6 +176,22 @@ function in_core(r::Real, z::Real, canvas::Canvas)
     psi = Ψitp(r, z)
     psin = psinorm(psi, canvas)
     psin > 1.0 && return false
+
+    # Finally make sure it's in the boundary
+    return inpolygon((r, z), canvas._bnd) == 1
+end
+
+function in_core(r::Real, z::Real, psin::Real, canvas::Canvas)
+
+    # Check psinorm value
+    psin > 1.0 && return false
+
+    # Check outside bounding box
+    rmin, rmax = canvas._rextrema
+    (r < rmin || r > rmax) && return false
+
+    zmin, zmax = canvas._zextrema
+    (z < zmin || z > zmax) && return false
 
     # Finally make sure it's in the boundary
     return inpolygon((r, z), canvas._bnd) == 1

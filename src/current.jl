@@ -76,19 +76,18 @@ function BetapIp(betap,alpha_m,alpha_n)
 end
 
 
-function Jtor(canvas::Canvas, profile::BetapIp)
-    Rs, Zs, Ψ, Ip, Raxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas.Ψaxis, canvas.Ψbnd
+function Jtor!(canvas::Canvas, profile::BetapIp)
+    Rs, Zs, Ψ, Ip, Raxis = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis
 
     p_int = zero(eltype(Ψ))
     IR    = zero(eltype(Ψ))
     I_R   = zero(eltype(Ψ))
-    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
     for (i,r) in enumerate(Rs)
         r_Raxis = r / Raxis
         Raxis_r = Raxis / r
-        for j in eachindex(Zs)
-            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
-            if 0.0 <= psin <= 1.0
+        for (j, z) in enumerate(Zs)
+            psin = psinorm(Ψ[i, j], canvas)
+            if in_core(r, z, psin, canvas)
                 jtor_shape = shape_function(psin, profile)
                 p_int += r * shape_integral(canvas, profile, psin)
                 IR  += jtor_shape * r_Raxis
@@ -106,21 +105,22 @@ function Jtor(canvas::Canvas, profile::BetapIp)
     L = Ip / I_R - LBeta0 * (IR / I_R - 1)
     Beta0 = LBeta0/L
 
-    Jtor = canvas._Jt
+    Jt = canvas._Jt
+    Jt .= 0.0
     for (i,r) in enumerate(Rs)
         r_Raxis = r / Raxis
         Raxis_r = Raxis / r
-        for j in eachindex(Zs)
-            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
-            if 0.0 <= psin <= 1.0
+        for (j, z) in enumerate(Zs)
+            psin = psinorm(Ψ[i, j], canvas)
+            if in_core(r, z, psin, canvas)
                 jtor_shape = shape_function(psin, profile)
-                Jtor[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
+                Jt[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
             end
         end
     end
     profile.L = L
     profile.Beta0 = Beta0
-    return Jtor
+    return Jt
 end
 
 function PaxisIp(paxis, alpha_m, alpha_n)
@@ -130,18 +130,17 @@ function PaxisIp(paxis, alpha_m, alpha_n)
     return PaxisIp(paxis, alpha_m, alpha_n, zero(paxis), zero(paxis))
 end
 
-function Jtor(canvas::Canvas, profile::PaxisIp)
-    Rs, Zs, Ψ, Ip, Raxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas.Ψaxis, canvas.Ψbnd
+function Jtor!(canvas::Canvas, profile::PaxisIp)
+    Rs, Zs, Ψ, Ip, Raxis = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis
 
     IR    = zero(eltype(Ψ))
     I_R   = zero(eltype(Ψ))
-    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
     for (i, r) in enumerate(Rs)
         r_Raxis = r / Raxis
         Raxis_r = Raxis / r
-        for j in eachindex(Zs)
-            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
-            if 0.0 <= psin <= 1.0
+        for (j, z) in enumerate(Zs)
+            psin = psinorm(Ψ[i, j], canvas)
+            if in_core(r, z, psin, canvas)
                 jtor_shape = shape_function(psin, profile)
                 IR  += jtor_shape * r_Raxis
                 I_R += jtor_shape * Raxis_r
@@ -158,25 +157,26 @@ function Jtor(canvas::Canvas, profile::PaxisIp)
     L = Ip / I_R - LBeta0 * (IR / I_R - 1)
     Beta0 = LBeta0 / L
 
-    Jtor = canvas._Jt
+    Jt = canvas._Jt
+    Jt .= 0.0
     for (i,r) in enumerate(Rs)
         r_Raxis = r / Raxis
         Raxis_r = Raxis / r
-        for j in eachindex(Zs)
-            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0.0, 1.0)
-            if 0.0 <= psin <= 1.0
+        for (j, z) in enumerate(Zs)
+            psin = psinorm(Ψ[i, j], canvas)
+            if in_core(r, z, psin, canvas)
                 jtor_shape = shape_function(psin, profile)
-                Jtor[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
+                Jt[i,j] = L * (Beta0 * r_Raxis + (1 - Beta0) * Raxis_r) * jtor_shape
             end
         end
     end
     profile.L = L
     profile.Beta0 = Beta0
-    return Jtor
+    return Jt
 end
 
 function pprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    psin = clamp(psi_norm, 0, 1)
+    psin = psinorm(Ψ[i, j], canvas)
     return (p.L*p.Beta0/canvas.Raxis) * shape_function(psin, profile)
 end
 
@@ -193,14 +193,13 @@ function ffprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
     p.ffprime(psi_norm)
 end
 
-function Jtor(canvas::Canvas, profile::PprimeFFprime)
-    Ψ, Ψaxis, Ψbnd = canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd
-    inv_dpsi = 1.0 / (Ψbnd - Ψaxis)
+function Jtor!(canvas::Canvas, profile::PprimeFFprime)
+    Rs, Zs, Ψ, Jt = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Jt
     Jt = canvas._Jt
-    for (i,R) in enumerate(canvas.Rs)
-        for j in eachindex(canvas.Zs)
-            psin = clamp((Ψ[i, j] - Ψaxis) * inv_dpsi, 0, 1)
-            if 0.0 <= psin <= 1.0
+    for (i,R) in enumerate(Rs)
+        for (j, z) in enumerate(Zs)
+            psin = psinorm(Ψ[i, j], canvas)
+            if in_core(r, z, psin, canvas)
                 Jt[i, j] = R * pprime(canvas, profile, psin) + ffprime(canvas, profile, psin) / (R * μ₀)
             end
         end
