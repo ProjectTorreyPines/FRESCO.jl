@@ -141,9 +141,11 @@ end
 
 function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
-    Rs, Zs, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp
+    Rs, Zs, Ψ, Ψbnd, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψbnd, canvas._Ψitp
     Raxis, Zaxis, Ψaxis = find_axis(canvas; update_Ψitp=false)
-    Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, Raxis, Zaxis, Float64[], Float64[]; PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
+    # BCL 7/31/24 - Potential error here with Ψbnd as that's supposed to be the "original" psi on the boundary
+    #               I'm not sure how to handle that, though hopefully it gets fixed on the IMAS side
+    Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, Ψbnd, Raxis, Zaxis, Float64[], Float64[]; PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
     canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
 end
 
