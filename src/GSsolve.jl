@@ -1,29 +1,29 @@
-function set_boundary_flux!(canvas::Canvas, Ψvac::Function, Jtor::Union{Nothing,Function})
+Ψvac(r, z, canvas::Canvas) = sum(VacuumFields.current(coil) != 0.0 ? VacuumFields.ψ(coil, r, z) : 0.0 for coil in canvas.coils)
+
+function set_boundary_flux!(canvas::Canvas, Jtor::Union{Nothing,Function})
     gridded_Jtor!(canvas, Jtor)
-    return set_boundary_flux!(canvas, Ψvac)
+    return set_boundary_flux!(canvas)
 end
 
-function set_boundary_flux!(canvas::Canvas, Ψvac::Function)
+function set_boundary_flux!(canvas::Canvas)
     Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
     include_Jt = any(J !== 0.0 for J in canvas._Jt)
-    Ψ[:, 1]   .= flux.(eachindex(Rs), :bottom, Ref(canvas), Ψvac; include_Jt)
-    Ψ[:, end] .= flux.(eachindex(Rs), :top,    Ref(canvas), Ψvac; include_Jt)
-    Ψ[1, :]   .= flux.(eachindex(Zs), :left,   Ref(canvas), Ψvac; include_Jt)
-    Ψ[end, :] .= flux.(eachindex(Zs), :right,   Ref(canvas), Ψvac; include_Jt)
+    fvac = (r, z) -> Ψvac(r, z, canvas::Canvas)
+    Ψ[:, 1]   .= flux.(eachindex(Rs), :bottom, Ref(canvas), fvac; include_Jt)
+    Ψ[:, end] .= flux.(eachindex(Rs), :top,    Ref(canvas), fvac; include_Jt)
+    Ψ[1, :]   .= flux.(eachindex(Zs), :left,   Ref(canvas), fvac; include_Jt)
+    Ψ[end, :] .= flux.(eachindex(Zs), :right,  Ref(canvas), fvac; include_Jt)
     return canvas
 end
 
-function invert_GS!(canvas::Canvas, Ψvac::Function, Jtor::Union{Nothing,Function})
-    set_boundary_flux!(canvas, Ψvac, Jtor)
+function invert_GS!(canvas::Canvas, Jtor::Union{Nothing,Function})
+    set_boundary_flux!(canvas, Jtor)
     invert_GS!(canvas)
 end
 
-function invert_GS!(canvas::Canvas, Ψvac::Function)
-    set_boundary_flux!(canvas, Ψvac)
-    invert_GS!(canvas)
-end
+function invert_GS!(canvas::Canvas; reset_boundary_flux=false)
 
-function invert_GS!(canvas::Canvas)
+    reset_boundary_flux && set_boundary_flux!(canvas)
     Rs, Zs, Ψ, Jt, a, b, c, MST, u, A, B, M, S = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Jt, canvas._a, canvas._b, canvas._c, canvas._MST, canvas._u, canvas._A, canvas._B, canvas._M, canvas._S
 
     Nr = length(Rs) - 1
