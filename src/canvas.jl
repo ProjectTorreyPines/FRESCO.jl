@@ -1,8 +1,11 @@
-mutable struct Canvas{T<:Real, I<:IMAS.Interpolations.AbstractInterpolation}
+const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
+
+mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:IMAS.Interpolations.AbstractInterpolation}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
     Ip::T
+    coils::VC
     Raxis::T
     Zaxis::T
     Ψaxis::T
@@ -37,10 +40,16 @@ function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
     eqt = dd.equilibrium.time_slice[]
     Ip = eqt.global_quantities.ip
 
-    return Canvas(Rs, Zs, Ip)
+    # define coils
+    coils = dd.pf_active.coil
+
+    return Canvas(Rs, Zs, Ip, coils)
 end
 
-function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}, Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}, Ip::T) where {T <: Real}
+function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int},
+                Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int},
+                Ip::T,
+                coils::CoilVectorType) where {T <: Real}
     Nr, Nz = length(Rs) - 1, length(Zs) - 1
     hr = (Rs[end] - Rs[1]) / Nr
     a = @. (1.0 + hr / (2Rs)) ^ -1
@@ -57,9 +66,36 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     M = Tridiagonal(zeros(T, Nr), zeros(T, Nr+1), zeros(T, Nr))
     S = zero(Ψ)
     zt = zero(T)
-    return Canvas(Rs, Zs, Ψ, Ip, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], (0.0, 0.0), (0.0, 0.0), a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], (0.0, 0.0), (0.0, 0.0), a, b, c, MST, u, A, B, M, S)
 end
 
 function update_interpolation!(canvas::Canvas)
     canvas._Ψitp = IMAS.ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ).PSI_interpolant
+end
+
+@recipe function plot_canvas(canvas::Canvas)
+    Rs, Zs, Ψ, coils, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.coils, canvas.Ψbnd
+
+    aspect_ratio --> :equal
+    pmin, pmax = extrema(Ψ)
+    cmap = :diverging
+    pext = max(abs(pmin), abs(pmax))
+    clims --> (-pext, pext)
+    @series begin
+        seriestype --> :heatmap
+        c --> cmap
+        Rs, Zs, Ψ'
+    end
+    @series begin
+        label --> nothing
+        coils
+    end
+    @series begin
+        seriestype --> :contour
+        colorbar_entry --> false
+        linewidth --> 2
+        levels --> @SVector[Ψbnd]
+        c --> :black
+        Rs, Zs, Ψ'
+    end
 end
