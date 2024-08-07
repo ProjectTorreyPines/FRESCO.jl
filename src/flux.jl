@@ -1,3 +1,53 @@
+coil_flux(r, z, canvas::Canvas) = sum(VacuumFields.current(coil) != 0.0 ? VacuumFields.ψ(coil, r, z) : 0.0 for coil in canvas.coils)
+
+function sync_Ψ!(canvas::Canvas; update_vacuum::Bool=false)
+    update_vacuum && set_Ψvac!(canvas)
+    @. canvas.Ψ = canvas._Ψpl + canvas._Ψvac
+    return canvas
+end
+
+function set_Ψvac!(canvas::Canvas)
+    Rs, Zs, Ψvac = canvas.Rs, canvas.Zs, canvas._Ψvac
+    for (j, z) in enumerate(Zs)
+        for (i, r) in enumerate(Rs)
+            Ψvac[i, j] = coil_flux(r, z, canvas)
+        end
+    end
+    return canvas
+end
+
+function set_boundary_flux!(canvas::Canvas, Jtor::Union{Nothing,Function})
+    gridded_Jtor!(canvas, Jtor)
+    return set_boundary_flux!(canvas)
+end
+
+function set_boundary_flux!(canvas::Canvas)
+    Rs, Zs, Ψpl = canvas.Rs, canvas.Zs, canvas._Ψpl
+    include_Jt = any(J !== 0.0 for J in canvas._Jt)
+    fvac = (r, z) -> 0.0
+    Ψpl[:, 1]   .= flux.(eachindex(Rs), :bottom, Ref(canvas), fvac; include_Jt)
+    Ψpl[:, end] .= flux.(eachindex(Rs), :top,    Ref(canvas), fvac; include_Jt)
+    Ψpl[1, :]   .= flux.(eachindex(Zs), :left,   Ref(canvas), fvac; include_Jt)
+    Ψpl[end, :] .= flux.(eachindex(Zs), :right,  Ref(canvas), fvac; include_Jt)
+    return canvas
+end
+
+# function set_boundary_flux!(canvas::Canvas)
+#     Rs, Zs, Ψ = canvas.Rs, canvas.Zs, canvas.Ψ
+#     include_Jt = any(J !== 0.0 for J in canvas._Jt)
+#     fvac = (r, z) -> coil_flux(r, z, canvas)
+#     Ψ[:, 1]   .= flux.(eachindex(Rs), :bottom, Ref(canvas), fvac; include_Jt)
+#     Ψ[:, end] .= flux.(eachindex(Rs), :top,    Ref(canvas), fvac; include_Jt)
+#     Ψ[1, :]   .= flux.(eachindex(Zs), :left,   Ref(canvas), fvac; include_Jt)
+#     Ψ[end, :] .= flux.(eachindex(Zs), :right,  Ref(canvas), fvac; include_Jt)
+#     return canvas
+# end
+
+function invert_GS!(canvas::Canvas, Jtor::Union{Nothing,Function})
+    set_boundary_flux!(canvas, Jtor)
+    invert_GS!(canvas)
+end
+
 # compute flux at (x, y) using 2D surface integral over plasma current
 function flux_2D(x::Real, y::Real, canvas::Canvas, Ψvac::Function; include_Jt::Bool=any(J !== 0.0 for J in canvas._Jt))
     psi = Ψvac(x, y)
@@ -145,7 +195,8 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     Raxis, Zaxis, Ψaxis = find_axis(canvas; update_Ψitp=false)
     # BCL 7/31/24 - Potential error here with Ψbnd as that's supposed to be the "original" psi on the boundary
     #               I'm not sure how to handle that, though hopefully it gets fixed on the IMAS side
-    Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, Ψbnd, Raxis, Zaxis, Float64[], Float64[]; PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
+    axis2bnd = (canvas.Ip >= 0.0) ? :increasing : :decreasing
+    Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis; PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
     canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
 end
 

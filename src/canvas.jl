@@ -10,6 +10,8 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:IMAS.Interpolations.Abstra
     Zaxis::T
     Ψaxis::T
     Ψbnd::T
+    _Ψpl::Matrix{T}
+    _Ψvac::Matrix{T}
     _U::Matrix{T}
     _Jt::Matrix{T}
     _Ψitp::I
@@ -41,7 +43,7 @@ function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
     Ip = eqt.global_quantities.ip
 
     # define coils
-    coils = dd.pf_active.coil
+    coils = VacuumFields.IMAS_pf_active__coils(dd)
 
     return Canvas(Rs, Zs, Ip, coils)
 end
@@ -56,6 +58,8 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     c = @. (1.0 - hr / (2Rs)) ^ -1
     b = a + c
     Ψ = zeros(T, Nr + 1, Nz + 1)
+    Ψpl = zero(Ψ)
+    Ψvac = zero(Ψ)
     U = zero(Ψ)
     Jt = zero(Ψ)
     Ψitp = IMAS.ψ_interpolant(Rs, Zs, Ψ).PSI_interpolant
@@ -66,7 +70,7 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     M = Tridiagonal(zeros(T, Nr), zeros(T, Nr+1), zeros(T, Nr))
     S = zero(Ψ)
     zt = zero(T)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, zt, zt, zt, zt, U, Jt, Ψitp, Tuple{T, T}[], (0.0, 0.0), (0.0, 0.0), a, b, c, MST, u, A, B, M, S)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, zt, zt, zt, zt, Ψpl, Ψvac, U, Jt, Ψitp, Tuple{T, T}[], (0.0, 0.0), (0.0, 0.0), a, b, c, MST, u, A, B, M, S)
 end
 
 function update_interpolation!(canvas::Canvas)
