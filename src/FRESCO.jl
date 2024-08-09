@@ -6,9 +6,9 @@ import IMAS
 import VacuumFields
 using VacuumFields: Green
 using FuseUtils: trapz
-using StaticArrays: @SVector
+using StaticArrays: SVector, @SVector
 import Interpolations
-using PolygonOps: inpolygon
+using PolygonOps: inpolygon, centroid
 import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
 
