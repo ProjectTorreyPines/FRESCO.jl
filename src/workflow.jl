@@ -34,7 +34,7 @@ function solve!(C::Canvas, profile::CurrentProfile, out::Int, in::Int; debug=fal
             @show C.Raxis, C.Zaxis, C.Ψaxis
             display(plot(C))
         end
-        println("Iteration $(j):\t", C.Ψbnd, "\t", abs((C.Ψaxis - Ψa0) / Ψa0))
+        println("Iteration $(j):\t", C.Ψaxis, "\t", abs((C.Ψaxis - Ψa0) / Ψa0))
     end
     return C
 end

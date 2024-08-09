@@ -148,7 +148,7 @@ function init_from_dd(file::String="/Users/lyons/.julia/dev/FRESCO/examples/D3D_
     dd = IMAS.json2imas(file)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
     paxis = eq1d.pressure[1]
-    profile = FRESCO.PaxisIp(paxis, alpha_m, alpha_n)
+    profile = PaxisIp(paxis, alpha_m, alpha_n)
     canvas = Canvas(deepcopy(dd), Nr)
     return dd, profile, canvas
 end
