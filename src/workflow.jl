@@ -5,6 +5,7 @@ function solve!(C::Canvas, profile::CurrentProfile, out::Int, in::Int; debug=fal
     Ψ, Ψpl = C.Ψ, C._Ψpl
     Ψt0 = deepcopy(Ψ)
     Ψp0 = deepcopy(Ψpl)
+    println("\t\tΨaxis\t\tError")
     for j in 1:out
         Ψa0 = C.Ψaxis
         #Ψ .= 0.0
