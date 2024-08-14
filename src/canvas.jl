@@ -105,6 +105,9 @@ end
     cmap = :diverging
     pext = max(abs(pmin - Ψbnd), abs(pmax - Ψbnd))
     clims --> (-pext + Ψbnd, pext + Ψbnd)
+    xlabel --> "R (m)"
+    ylabel --> "Z (m)"
+    title --> "Poloidal Flux"
     @series begin
         seriestype --> :heatmap
         c --> cmap
