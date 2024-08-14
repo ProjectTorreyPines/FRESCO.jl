@@ -181,7 +181,7 @@ psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - can
 
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψbnd, is_inside  = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψbnd, canvas._is_inside
-    B = IMAS.flux_surface(Rs, Zs, Ψ, Raxis, Zaxis, Float64[], Float64[], Ψbnd, :closed).prpz
+    B = IMAS.flux_surface(Rs, Zs, Ψ, Raxis, Zaxis, Float64[], Float64[], Ψbnd, :closed)
     @assert length(B) == 1
     r, z =  B[1].r, B[1].z
     canvas._bnd = [@SVector[r[k], z[k]] for k in eachindex(r)]
