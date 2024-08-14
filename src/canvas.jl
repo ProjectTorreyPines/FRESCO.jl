@@ -1,6 +1,6 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:IMAS.Interpolations.AbstractInterpolation}
+mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInterpolation}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
@@ -103,8 +103,8 @@ end
     aspect_ratio --> :equal
     pmin, pmax = extrema(Ψ)
     cmap = :diverging
-    pext = max(abs(pmin), abs(pmax))
-    clims --> (-pext, pext)
+    pext = max(abs(pmin - Ψbnd), abs(pmax - Ψbnd))
+    clims --> (-pext + Ψbnd, pext + Ψbnd)
     @series begin
         seriestype --> :heatmap
         c --> cmap

@@ -92,8 +92,9 @@ end
 function shape_control!(canvas::Canvas)
     Rs, Zs, Ψpl, coils, Ψbnd, Rb, Zb = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas.Ψbnd, canvas._Rb_target, canvas._Zb_target
     Ψpl_itp = IMAS.ψ_interpolant(Rs, Zs, Ψpl).PSI_interpolant
-    flux_cps = [VacuumFields.FluxControlPoint(Rb[k], Zb[k], Ψbnd - Ψpl_itp(Rb[k], Zb[k])) for k in eachindex(Rb)]
-    VacuumFields.find_coil_currents!(coils, flux_cps; λ_regularize=1e-16)
+    #flux_cps = [VacuumFields.FluxControlPoint(Rb[k], Zb[k], Ψbnd) for k in eachindex(Rb)]
+    iso_cps = VacuumFields.IsoControlPoints(Rb, Zb)
+    VacuumFields.find_coil_currents!(coils, Ψpl_itp; iso_cps, λ_regularize=1e-12)
     set_Ψvac!(canvas)
     return canvas
 end

@@ -5,7 +5,7 @@ function solve!(C::Canvas, profile::CurrentProfile, out::Int, in::Int; debug=fal
     Ψ, Ψpl = C.Ψ, C._Ψpl
     Ψt0 = deepcopy(Ψ)
     Ψp0 = deepcopy(Ψpl)
-    println("\t\tΨaxis\t\tError")
+    println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
     for j in 1:out
         Ψa0 = C.Ψaxis
         #Ψ .= 0.0
@@ -35,7 +35,7 @@ function solve!(C::Canvas, profile::CurrentProfile, out::Int, in::Int; debug=fal
             @show C.Raxis, C.Zaxis, C.Ψaxis
             display(plot(C))
         end
-        println("Iteration $(j):\t", C.Ψaxis, "\t", abs((C.Ψaxis - Ψa0) / Ψa0))
+        println("Iteration $(j):\t", C.Ψaxis, "\t", C.Ψbnd - C.Ψaxis, "\t", abs((C.Ψaxis - Ψa0) / Ψa0))
     end
     return C
 end
