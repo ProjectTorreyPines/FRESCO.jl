@@ -143,7 +143,7 @@ end
 
 
 # Psuedo-temporary initialization function
-function init_from_dd(file::String="/Users/lyons/.julia/dev/FRESCO/examples/D3D_case/dd.json";
+function init_from_dd(file::String=(@__DIR__) * "/../examples/D3D_case/dd.json";
                       alpha_m::Real = 0.6, alpha_n::Real = 0.6, Nr::Int=65, Nz::Int=Nr)
     dd = IMAS.json2imas(file)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
