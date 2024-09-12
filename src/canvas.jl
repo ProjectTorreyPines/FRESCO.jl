@@ -40,8 +40,13 @@ function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
 
     # define grid
     layer = dd.build.layer
-    k = IMAS.get_build_index(layer; type=IMAS._plasma_)
-    Rw, Zw = layer[k].outline.r, layer[k].outline.z
+    if !isempty(layer)
+        k = IMAS.get_build_index(layer; type=IMAS._plasma_)
+        wall = layer[k].outline
+    else
+        wall = dd.wall.description_2d[].limiter.unit[].outline
+    end
+    Rw, Zw = wall.r, wall.z
     Rs, Zs = range(minimum(Rw), maximum(Rw), Nr), range(minimum(Zw), maximum(Zw), Nz)
 
     eqt = dd.equilibrium.time_slice[]
