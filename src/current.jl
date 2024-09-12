@@ -52,9 +52,9 @@ mutable struct PaxisIp{T} <: CurrentProfile
     Beta0::T
 end
 
-struct PprimeFFprime{F<:Function} <: CurrentProfile
-    pprime::F
-    ffprime::F
+struct PprimeFFprime{F1<:Function, F2<:Function} <: CurrentProfile
+    pprime::F1
+    ffprime::F2
 end
 
 @inline shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
@@ -176,13 +176,11 @@ function Jtor!(canvas::Canvas, profile::PaxisIp)
 end
 
 function pprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    psin = psinorm(Ψ[i, j], canvas)
-    return (p.L*p.Beta0/canvas.Raxis) * shape_function(psin, profile)
+    return (p.L*p.Beta0/canvas.Raxis) * shape_function(psi_norm, profile)
 end
 
 function ffprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    psin = clamp(psi_norm, 0, 1)
-    return μ₀*p.L*(1 - p.Beta0) * shape_function(psin, profile)
+    return μ₀*p.L*(1 - p.Beta0) * shape_function(psi_norm, profile)
 end
 
 function pprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
@@ -194,15 +192,41 @@ function ffprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime)
-    Rs, Zs, Ψ, Jt = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Jt
-    Jt = canvas._Jt
+    Rs, Zs, Ψ, Ip, Jt, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Jt, canvas._is_inside
+    Jt .= 0.0
+
+    # compute the FF' contribution to Ip
     for (i,R) in enumerate(Rs)
         for (j, z) in enumerate(Zs)
             if is_inside[i, j]
                 psin = psinorm(Ψ[i, j], canvas)
-                Jt[i, j] = R * pprime(canvas, profile, psin) + ffprime(canvas, profile, psin) / (R * μ₀)
+                Jt[i, j] = -twopi * ffprime(canvas, profile, psin) / (R * μ₀)
             end
         end
     end
+    If_c = sum(Jt) * step(Rs) * step(Zs)
+
+    # compute total Ip without scaling
+    for (i,R) in enumerate(Rs)
+        for (j, z) in enumerate(Zs)
+            if is_inside[i, j]
+                psin = psinorm(Ψ[i, j], canvas)
+                Jt[i, j] += -twopi * R * pprime(canvas, profile, psin)
+            end
+        end
+    end
+    Ic = sum(Jt) * step(Rs) * step(Zs)
+
+    # scale FF' to fix Ip
+    fac = 1 + (Ip - Ic) / If_c
+    for (i,R) in enumerate(Rs)
+        for (j, z) in enumerate(Zs)
+            if is_inside[i, j]
+                psin = psinorm(Ψ[i, j], canvas)
+                Jt[i, j] = -twopi * (R * pprime(canvas, profile, psin) + fac * ffprime(canvas, profile, psin) / (R * μ₀))
+            end
+        end
+    end
+
     return Jt
 end
