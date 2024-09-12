@@ -1,10 +1,12 @@
 # Initialize to uniform current in ellipse half the size of domain
 function initial_current(canvas::Canvas, R::Real, Z::Real)
-    Rs, Zs, Ip = canvas.Rs, canvas.Zs, canvas.Ip
-    R0 = 0.5 * (Rs[end] + Rs[1])
-    Z0 = 0.5 * (Zs[end] + Zs[1])
-    a = 0.4 * (Rs[end] - Rs[1])
-    b = 0.4 * (Zs[end] - Zs[1])
+    Rb, Zb, Ip = canvas._Rb_target, canvas._Zb_target, canvas.Ip
+    Rmin, Rmax = extrema(Rb)
+    Zmin, Zmax = extrema(Zb)
+    R0 = 0.5 * (Rmax + Rmin)
+    Z0 = 0.5 * (Zmax + Zmin)
+    a = 0.4 * (Rmax - Rmin)
+    b = 0.4 * (Zmax - Zmin)
     erad = ((R - R0) / a) ^ 2 + ((Z - Z0) / b) ^ 2
     if erad <= 1.0
         return Ip / (π * a * b)
