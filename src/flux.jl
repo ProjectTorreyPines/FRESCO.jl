@@ -18,17 +18,17 @@ function set_Ψvac!(canvas::Canvas)
     return canvas
 end
 
-function set_boundary_flux!(canvas::Canvas, Jtor::Union{Nothing,Function})
+function set_boundary_flux!(canvas::Canvas, Jtor::Union{Nothing,Function}, relax = 1.0)
     gridded_Jtor!(canvas, Jtor)
-    return set_boundary_flux!(canvas)
+    return set_boundary_flux!(canvas, relax)
 end
 
-function set_boundary_flux!(canvas::Canvas)
+function set_boundary_flux!(canvas::Canvas, relax = 1.0)
     Rs, Zs, Ψpl = canvas.Rs, canvas.Zs, canvas._Ψpl
-    Ψpl[:, 1]   .= flux.(eachindex(Rs), :bottom, Ref(canvas))
-    Ψpl[:, end] .= flux.(eachindex(Rs), :top,    Ref(canvas))
-    Ψpl[1, :]   .= flux.(eachindex(Zs), :left,   Ref(canvas))
-    Ψpl[end, :] .= flux.(eachindex(Zs), :right,  Ref(canvas))
+    Ψpl[:, 1]   .= (1.0 - relax) * Ψpl[:, 1]   + relax * flux.(eachindex(Rs), :bottom, Ref(canvas))
+    Ψpl[:, end] .= (1.0 - relax) * Ψpl[:, end] + relax * flux.(eachindex(Rs), :top,    Ref(canvas))
+    Ψpl[1, :]   .= (1.0 - relax) * Ψpl[1, :]   + relax * flux.(eachindex(Zs), :left,   Ref(canvas))
+    Ψpl[end, :] .= (1.0 - relax) * Ψpl[end, :] + relax * flux.(eachindex(Zs), :right,  Ref(canvas))
     return canvas
 end
 

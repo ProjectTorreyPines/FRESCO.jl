@@ -17,4 +17,4 @@ VacuumFields = "9d9223b5-c5da-4bf4-abee-2a8bb6775a49"
 
 [compat]
 IMAS = "1.4.1"
-VacuumFields = "2"
+VacuumFields = "2.2"

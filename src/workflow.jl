@@ -1,41 +1,52 @@
-function solve!(C::Canvas, profile::CurrentProfile, out::Int, in::Int; debug=false)
-    J = (x,y) -> initial_current(C, x, y)
-    gridded_Jtor!(C, J)
-    set_Ψvac!(C)
-    Ψ, Ψpl = C.Ψ, C._Ψpl
+function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
+                Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
+                Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
+                debug=false, relax::Real=0.5, control::Union{Nothing, Symbol}=:shape, initialize=true)
+    @assert control in (nothing, :shape, :vertical, :radial, :position)
+    if initialize
+        J = (x,y) -> initial_current(canvas, x, y)
+        gridded_Jtor!(canvas, J)
+    end
+    set_Ψvac!(canvas)
+    Ψ, Ψpl = canvas.Ψ, canvas._Ψpl
     Ψt0 = deepcopy(Ψ)
     Ψp0 = deepcopy(Ψpl)
     println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
-    for j in 1:out
-        Ψa0 = C.Ψaxis
+    for j in 1:Nout
+        Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
-        invert_GS_zero_bnd!(C); # this defines U for the boundary integral
-        set_boundary_flux!(C)
-        for i in 1:in
+        invert_GS_zero_bnd!(canvas); # this defines U for the boundary integral
+        set_boundary_flux!(canvas, j==1 ? 1.0 : relax)
+        for i in 1:Nin
+            Ψai = canvas.Ψaxis
             Ψt0 .= Ψ
             Ψp0 .= Ψpl
-            invert_GS!(C)
+            invert_GS!(canvas)
             if (i != 1.0)
-                relax = 0.1
                 @. Ψ   = (1.0 - relax) * Ψt0 + relax * Ψ
                 @. Ψpl = (1.0 - relax) * Ψp0 + relax * Ψpl
             end
-            update_bounds!(C)
-            Jtor!(C, profile)
+            update_bounds!(canvas)
+            Jtor!(canvas, profile)
+            if debug
+                println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", abs((canvas.Ψaxis - Ψai) / (relax * Ψai)))
+                #j>1 && display(plot(canvas))
+            end
         end
-        #vertical_feedback!(C, axis.z, 9, 18, 1e5)
-        #radial_feedback!(C, axis.r, @SVector[6, 15], 1e5)
-        #print(C.Ψbnd, "\t")
-        shape_control!(C)
-        sync_Ψ!(C)
-        update_bounds!(C)
-        Jtor!(C, profile)
-        #println(C.Ψbnd)
-        if debug
-            @show C.Raxis, C.Zaxis, C.Ψaxis
-            display(plot(C))
+        if (control === :shape)
+            j == 1 && println("WARNING: Need to update definition of fixed coils as input or programmatically")
+            fixed = 1:6
+            shape_control!(canvas, fixed)
         end
-        println("Iteration $(j):\t", C.Ψaxis, "\t", C.Ψbnd - C.Ψaxis, "\t", abs((C.Ψaxis - Ψa0) / Ψa0))
+
+        (control === :radial) && radial_feedback!(canvas, Rtarget, 0.5)
+        (control === :vertical) && vertical_feedback!(canvas, Ztarget, 0.5)
+        (control === :position) && axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
+        sync_Ψ!(canvas)
+        update_bounds!(canvas)
+        Jtor!(canvas, profile)
+        println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0)))
+        debug && display(plot(canvas))
     end
-    return C
+    return canvas
 end

@@ -1,6 +1,6 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInterpolation}
+mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInterpolation, C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
@@ -24,6 +24,8 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
     _is_inside::Matrix{Bool}
     _Rb_target::Vector{T}
     _Zb_target::Vector{T}
+    _vs_circuit::C1
+    _rs_circuit::C2
     _a::Vector{T}
     _b::Vector{T}
     _c::Vector{T}
@@ -58,7 +60,6 @@ function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
     end
 
     # define current
-    eqt = dd.equilibrium.time_slice[]
     Ip = eqt.global_quantities.ip
 
     # define coils
@@ -75,6 +76,16 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
                 Rb_target::Vector{T}, Zb_target::Vector{T}) where {T <: Real}
     Nr, Nz = length(Rs) - 1, length(Zs) - 1
     hr = (Rs[end] - Rs[1]) / Nr
+
+    R0, Z0 = 0.5 * (Rs[end] + Rs[1]), 0.5 * (Zs[end] + Zs[1])
+    dR, dZ = 0.5 * (Rs[end] - Rs[1]), 0.5 * (Zs[end] - Zs[1])
+
+    fout = 2.0
+    vs_coils = [VacuumFields.PointCoil(R0, Z0 + fout * dZ), VacuumFields.PointCoil(R0, Z0 - fout * dZ)]
+    vs_circuit = VacuumFields.SeriesCircuit(vs_coils, 0.0, [1, -1])
+    rs_coils = [VacuumFields.PointCoil(R0 + fout * dR, Z0 + dZ / 6), VacuumFields.PointCoil(R0 + fout * dR, Z0 - dZ / 6)]
+    rs_circuit = VacuumFields.SeriesCircuit(rs_coils, 0.0, [1, 1])
+
     a = @. (1.0 + hr / (2Rs)) ^ -1
     c = @. (1.0 - hr / (2Rs)) ^ -1
     b = a + c
@@ -84,7 +95,7 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     Gvac = [VacuumFields.Green(coil, r, z) for r in Rs, z in Zs, coil in coils]
     U = zero(Ψ)
     Jt = zero(Ψ)
-    Ψitp = IMAS.ψ_interpolant(Rs, Zs, Ψ).PSI_interpolant
+    Ψitp = ψ_interpolant(Rs, Zs, Ψ)
     is_inside = Matrix{Bool}(undef, size(Ψ))
     u = zero(Ψ)
     A = zero(Rs)
@@ -94,12 +105,14 @@ function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{
     S = zero(Ψ)
     zt = zero(T)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, U, Jt, Ψitp,
-                  SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, Rb_target, Zb_target, a, b, c,
-                  MST, u, A, B, M, S)
+                  SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, Rb_target, Zb_target,
+                  vs_circuit, rs_circuit, a, b, c, MST, u, A, B, M, S)
 end
 
+ψ_interpolant(r, z, psi) = Interpolations.cubic_spline_interpolation((r, z), psi; extrapolation_bc=Interpolations.Line())
+
 function update_interpolation!(canvas::Canvas)
-    canvas._Ψitp = IMAS.ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ).PSI_interpolant
+    canvas._Ψitp = ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ)
 end
 
 @recipe function plot_canvas(canvas::Canvas)
@@ -155,8 +168,14 @@ function init_from_dd(file::String=(@__DIR__) * "/../examples/D3D_case/dd.json";
                       alpha_m::Real = 0.6, alpha_n::Real = 0.6, Nr::Int=65, Nz::Int=Nr)
     dd = IMAS.json2imas(file)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
-    paxis = eq1d.pressure[1]
-    profile = PaxisIp(paxis, alpha_m, alpha_n)
+    # paxis = eq1d.pressure[1]
+    # profile = PaxisIp(paxis, alpha_m, alpha_n)
+    psi_norm = eq1d.psi_norm
+    gpp = IMAS.interp1d(psi_norm, eq1d.dpressure_dpsi, :cubic)
+    pprime  = x -> gpp(x)
+    gffp =  IMAS.interp1d(psi_norm, eq1d.f_df_dpsi, :cubic)
+    ffprime = x -> gffp(x)
+    profile = PprimeFFprime(pprime, ffprime)
     canvas = Canvas(deepcopy(dd), Nr)
     return dd, profile, canvas
 end
