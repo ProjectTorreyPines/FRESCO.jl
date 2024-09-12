@@ -38,26 +38,16 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
 end
 
 
-function Canvas(dd::IMAS.dd, Nr, Nz=Nr)
-
-    # define grid
-    layer = dd.build.layer
-    if !isempty(layer)
-        k = IMAS.get_build_index(layer; type=IMAS._plasma_)
-        wall = layer[k].outline
-    else
-        wall = dd.wall.description_2d[].limiter.unit[].outline
-    end
-    Rw, Zw = wall.r, wall.z
-    Rs, Zs = range(minimum(Rw), maximum(Rw), Nr), range(minimum(Zw), maximum(Zw), Nz)
-
+function Canvas(dd::IMAS.dd, Nr::Int, Nz::Int=Nr)
+    wall_r, wall_z = IMAS.first_wall(dd.wall)
     eqt = dd.equilibrium.time_slice[]
-    Rb_target = eqt.boundary.outline.r
-    Zb_target = eqt.boundary.outline.z
-    if (Rb_target[1] ≈ Rb_target[end]) && (Zb_target[1] ≈ Zb_target[end])
-        Rb_target = Rb_target[1:end-1]
-        Zb_target = Zb_target[1:end-1]
-    end
+    Canvas(eqt, wall_r, wall_z, Nr, Nz)
+end
+
+function Canvas(eqt::IMAS.equilibrium__time_slice{T}, wall_r::AbstractVector{T}, wall_z::AbstractVector{T}, Nr::Int, Nz::Int=Nr) where {T<:Real}
+    Rs, Zs = range(minimum(Rw), maximum(Rw), Nr), range(minimum(Zw), maximum(Zw), Nz)
+    
+    Rb_target, Zb_target = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     # define current
     Ip = eqt.global_quantities.ip
