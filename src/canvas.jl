@@ -37,17 +37,14 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
     _S::Matrix{T}
 end
 
-
 function Canvas(dd::IMAS.dd, Nr::Int, Nz::Int=Nr)
-    wall_r, wall_z = IMAS.first_wall(dd.wall)
     eqt = dd.equilibrium.time_slice[]
-    Canvas(eqt, wall_r, wall_z, Nr, Nz)
-end
 
-function Canvas(eqt::IMAS.equilibrium__time_slice{T}, wall_r::AbstractVector{T}, wall_z::AbstractVector{T}, Nr::Int, Nz::Int=Nr) where {T<:Real}
-    Rs, Zs = range(minimum(Rw), maximum(Rw), Nr), range(minimum(Zw), maximum(Zw), Nz)
+    wall_r, wall_z = IMAS.first_wall(dd.wall)
+    wall_r, wall_z = collect(wall_r), collect(wall_z)
+    Rs, Zs = range(extrema(wall_r)..., Nr), range(extrema(wall_z)..., Nz)
     
-    Rb_target, Zb_target = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
+    boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     # define current
     Ip = eqt.global_quantities.ip
@@ -55,15 +52,17 @@ function Canvas(eqt::IMAS.equilibrium__time_slice{T}, wall_r::AbstractVector{T},
     # define coils
     coils = VacuumFields.MultiCoils(dd)
 
-    return Canvas(Rs, Zs, Ip, coils, Rw, Zw, Rb_target, Zb_target)
+    return Canvas(Rs, Zs, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z))
 end
 
-function Canvas(Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int},
-                Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int},
+function Canvas(Rs::AbstractRange{T},
+                Zs::AbstractRange{T},
                 Ip::T,
                 coils::CoilVectorType,
-                Rw::Vector{T}, Zw::Vector{T},
-                Rb_target::Vector{T}, Zb_target::Vector{T}) where {T <: Real}
+                Rw::Vector{T},
+                Zw::Vector{T},
+                Rb_target::Vector{T},
+                Zb_target::Vector{T}) where {T <: Real}
     Nr, Nz = length(Rs) - 1, length(Zs) - 1
     hr = (Rs[end] - Rs[1]) / Nr
 
