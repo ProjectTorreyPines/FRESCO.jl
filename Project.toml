@@ -19,4 +19,5 @@ VacuumFields = "9d9223b5-c5da-4bf4-abee-2a8bb6775a49"
 [compat]
 FFMPEG = "0.4"
 IMAS = "1.4.1"
+Interpolations = "0.15"
 VacuumFields = "2.2"
