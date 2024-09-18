@@ -1,17 +1,25 @@
 function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
                 Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
-                debug=false, relax::Real=0.5, control::Union{Nothing, Symbol}=:shape, initialize=true)
+                debug=0,
+                relax::Real=0.5,
+                tolerance::Real=0.0,
+                control::Union{Nothing, Symbol}=:shape,
+                initialize=true)
+
     @assert control in (nothing, :shape, :vertical, :radial, :position)
+
     if initialize
         J = (x,y) -> initial_current(canvas, x, y)
         gridded_Jtor!(canvas, J)
     end
+
     set_Ψvac!(canvas)
     Ψ, Ψpl = canvas.Ψ, canvas._Ψpl
     Ψt0 = deepcopy(Ψ)
     Ψp0 = deepcopy(Ψpl)
-    println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
+
+    sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
@@ -28,8 +36,9 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
             end
             update_bounds!(canvas)
             Jtor!(canvas, profile)
-            if debug
-                println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", abs((canvas.Ψaxis - Ψai) / (relax * Ψai)))
+            error_inner = abs((canvas.Ψaxis - Ψai) / (relax * Ψai))
+            if sum(debug) == 2
+                println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_inner)
                 #j>1 && display(plot(canvas))
             end
         end
@@ -42,11 +51,17 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
         (control === :radial) && radial_feedback!(canvas, Rtarget, 0.5)
         (control === :vertical) && vertical_feedback!(canvas, Ztarget, 0.5)
         (control === :position) && axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
+
         sync_Ψ!(canvas)
         update_bounds!(canvas)
         Jtor!(canvas, profile)
-        println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0)))
-        debug && display(plot(canvas))
+        error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
+        sum(debug) > 0 && println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_outer)
+        sum(debug) == 2 && debug && display(plot(canvas))
+        if error_outer < tolerance
+            break
+        end
     end
+
     return canvas
 end
