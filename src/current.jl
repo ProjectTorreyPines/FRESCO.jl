@@ -54,10 +54,13 @@ mutable struct PaxisIp{T} <: CurrentProfile
     Beta0::T
 end
 
-struct PprimeFFprime{F1<:Function, F2<:Function} <: CurrentProfile
+mutable struct PprimeFFprime{F1<:Function, F2<:Function} <: CurrentProfile
     pprime::F1
     ffprime::F2
+    ffp_scale::Float64
 end
+
+PprimeFFprime(pprime::Function, ffprime::Function) = PprimeFFprime(pprime, ffprime, 1.0)
 
 @inline shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
 
@@ -190,7 +193,7 @@ function pprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
 end
 
 function ffprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
-    p.ffprime(psi_norm)
+    p.ffprime(psi_norm) * p.ffp_scale
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime)
@@ -220,7 +223,7 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime)
     Ic = sum(Jt) * step(Rs) * step(Zs)
 
     # scale FF' to fix Ip
-    fac = 1 + (Ip - Ic) / If_c
+    fac =  1 + (Ip - Ic) / If_c
     for (i,R) in enumerate(Rs)
         for (j, z) in enumerate(Zs)
             if is_inside[i, j]
@@ -229,6 +232,8 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime)
             end
         end
     end
+
+    profile.ffp_scale *= fac
 
     return Jt
 end
