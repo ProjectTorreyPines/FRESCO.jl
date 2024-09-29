@@ -37,20 +37,20 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
     _S::Matrix{T}
 end
 
-function Canvas(dd::IMAS.dd, Nr::Int, Nz::Int=Nr)
+function Canvas(dd::IMAS.dd, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_pf_passive=true)
     eqt = dd.equilibrium.time_slice[]
 
     wall_r, wall_z = IMAS.first_wall(dd.wall)
     wall_r, wall_z = collect(wall_r), collect(wall_z)
     Rs, Zs = range(extrema(wall_r)..., Nr), range(extrema(wall_z)..., Nz)
-    
+
     boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     # define current
     Ip = eqt.global_quantities.ip
 
     # define coils
-    coils = VacuumFields.MultiCoils(dd)
+    coils = VacuumFields.MultiCoils(dd; load_pf_active, load_pf_passive)
 
     return Canvas(Rs, Zs, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z))
 end
