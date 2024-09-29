@@ -57,7 +57,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
         Jtor!(canvas, profile)
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         sum(debug) > 0 && println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_outer)
-        sum(debug) == 2 && debug && display(plot(canvas))
+        sum(debug) == 2 && display(plot(canvas))
         if error_outer < tolerance
             break
         end
