@@ -5,7 +5,7 @@ using LinearAlgebra
 import IMAS
 import VacuumFields
 using VacuumFields: Green
-using FuseUtils: trapz
+using IMASutils: trapz
 using StaticArrays: SVector, @SVector, @SMatrix
 import Interpolations
 using PolygonOps: inpolygon, centroid
