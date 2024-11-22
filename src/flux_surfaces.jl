@@ -10,21 +10,17 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
         for i in eachindex(Rs)[2:end-1]
             !is_in_wall[i, j] && continue
             P = psisign * Ψ[i, j]
-            Pl = psisign * Ψ[i-1, j]
-            Pr = psisign * Ψ[i+1, j]
-            Pd = psisign * Ψ[i, j-1]
-            Pu = psisign * Ψ[i, j+1]
-            if P < Pl && P < Pr && P < Pd && P < Pu
+            if P == minimum(@view(Ψ[i-1:i+1, j-1:j+1]))
                 if !found
                     ia, ja = i, j
                     found = true
                 else
-                    throw("Found multiple minimum Ψ points")
+                    display(plot(canvas))
+                    throw("Found multiple minimum Ψ points: $((ia, ja)) and $((i, j))")
                 end
             end
         end
     end
-
     Rg, Zg = Rs[ia], Zs[ja]
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
