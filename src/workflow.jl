@@ -5,6 +5,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 relax::Real=0.5,
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
+                fixed_coils::AbstractVector{Int}=Int[],
                 initialize_current=true,
                 initialize_mutuals=(control === :eddy))
 
@@ -28,6 +29,8 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
     end
 
     sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
+    converged = false
+    error_outer = 0.0
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
@@ -50,17 +53,17 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 #j>1 && display(plot(canvas))
             end
         end
-        if (control === :shape)
-            j == 1 && @warn "WARNING: Need to update definition of fixed coils as input or programmatically"
-            #fixed = vcat(1:6, 25:48)
-            fixed = vcat(1:6, 13:162)
-            shape_control!(canvas, fixed)
+        if control === :shape
+            shape_control!(canvas, fixed_coils)
+        elseif control === :radial
+            radial_feedback!(canvas, Rtarget, 0.5)
+        elseif control === :vertical
+            vertical_feedback!(canvas, Ztarget, 0.5)
+        elseif control === :position
+            axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
+        elseif control === :eddy
+            eddy_control!(canvas)
         end
-
-        (control === :radial) && radial_feedback!(canvas, Rtarget, 0.5)
-        (control === :vertical) && vertical_feedback!(canvas, Ztarget, 0.5)
-        (control === :position) && axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
-        (control === :eddy) && eddy_control!(canvas)
         sync_Ψ!(canvas; update_Ψitp=true)
         update_bounds!(canvas; update_Ψitp=false)
         Jtor!(canvas, profile)
@@ -68,8 +71,13 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
         sum(debug) > 0 && println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_outer)
         sum(debug) == 2 && display(plot(canvas))
         if error_outer < tolerance
+            converged = true
             break
         end
+    end
+
+    if !converged && tolerance > 0.0
+        @warn "FRESCO did not converged to $(error_outer) > $(tolerance) in $(Nout) iterations"
     end
 
     return canvas
