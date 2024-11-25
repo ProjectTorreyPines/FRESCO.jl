@@ -10,7 +10,7 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
         for i in eachindex(Rs)[2:end-1]
             !is_in_wall[i, j] && continue
             P = psisign * Ψ[i, j]
-            if P == minimum(@view(Ψ[i-1:i+1, j-1:j+1]))
+            if P == minimum(p -> psisign * p, @view(Ψ[i-1:i+1, j-1:j+1]))
                 if !found
                     ia, ja = i, j
                     found = true
