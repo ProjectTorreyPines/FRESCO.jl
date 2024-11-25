@@ -58,19 +58,18 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_p
 
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
-    Rimas = range(eqt2d.grid.dim1[1], eqt2d.grid.dim1[end], length(eqt2d.grid.dim1))
-    Zimas = range(eqt2d.grid.dim2[1], eqt2d.grid.dim2[end], length(eqt2d.grid.dim2))
+    Rimas = IMAS.to_range(eqt2d.grid.dim1)
+    Zimas = IMAS.to_range(eqt2d.grid.dim2)
 
-    Ψ = deepcopy(eqt2d.psi)
-    # if (Rimas == Rs) && (Zimas == Zs)
-    #     Ψ = deepcopy(eqt2d.psi)
-    # else
-    #     if Rs[1] < Rimas[1] || Rs[end] > Rimas[end] || Zs[1] < Zimas[1] || Zs[end] > Zimas[end]
-    #         @warn "FRESCO initialized with flux extrapolated in part of domain"
-    #     end
-    #     PSI_interpolant = ψ_interpolant(Rimas, Zimas, eqt2d.psi)
-    #     Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
-    # end
+    if (length(Rimas) == Nr) && (length(Zimas) == Nz)
+        # use exact flux from dd
+        Rs, Zs, Ψ = Rimas, Zimas, deepcopy(eqt2d.psi)
+    else
+        Rs = range(Rimas[1], Rimas[end], Nr)
+        Zs = range(Zimas[1], Zimas[end], Nz)
+        PSI_interpolant = ψ_interpolant(Rimas, Zimas, eqt2d.psi)
+        Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
+    end
 
     boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
@@ -83,7 +82,7 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_p
     Ns = length(eqt.profiles_1d.psi)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Ns)
 
-    canvas = Canvas(Rimas, Zimas, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), surfaces)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), surfaces)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -102,9 +101,9 @@ function Canvas(Rs::AbstractRange{T},
                 Zw::Vector{T},
                 Rb_target::Vector{T},
                 Zb_target::Vector{T}) where {T<:Real}
-    Nr, Nz = length(Rs) - 1, length(Zs) - 1
-    Ψ = zeros(T, Nr + 1, Nz + 1)
-    surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr)
+    Nr, Nz = length(Rs), length(Zs)
+    Ψ = zeros(T, Nr, Nz)
+    surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Rb_target, Zb_target, surfaces)
 end
 
@@ -118,15 +117,13 @@ function Canvas(Rs::AbstractRange{T},
                 Rb_target::Vector{T},
                 Zb_target::Vector{T},
                 surfaces::Vector{<:IMAS.SimpleSurface}) where {T<:Real}
-    Nr, Nz = length(Rs) - 1, length(Zs) - 1
-    @assert size(Ψ) == (Nr + 1, Nz + 1)
-    hr = (Rs[end] - Rs[1]) / Nr
+    Nr, Nz = length(Rs), length(Zs)
+    @assert size(Ψ) == (Nr, Nz)
+    hr = Base.step(Rs)
 
     R0, Z0 = 0.5 * (Rs[end] + Rs[1]), 0.5 * (Zs[end] + Zs[1])
     dR, dZ = 0.5 * (Rs[end] - Rs[1]), 0.5 * (Zs[end] - Zs[1])
 
-    #@warn "USING ITER VS COILS"
-    #vs_coils = coils[13:14]
     fout = 2.0
     vs_coils = [VacuumFields.PointCoil(R0, Z0 + fout * dZ), VacuumFields.PointCoil(R0, Z0 - fout * dZ)]
     vs_circuit = VacuumFields.SeriesCircuit(vs_coils, 0.0, [1, -1])
@@ -155,8 +152,8 @@ function Canvas(Rs::AbstractRange{T},
     u = zero(Ψ)
     A = zero(Rs)
     B = zero(Rs)
-    MST = [sqrt(2 / Nz) * sin(π * j * k / Nz) for j in 0:Nz, k in 0:Nz]
-    M = Tridiagonal(ones(T, Nr), ones(T, Nr+1), ones(T, Nr))  # fill with ones so I can allocate lu Array
+    MST = [sqrt(2 / (Nz - 1)) * sin(π * j * k / (Nz - 1)) for j in 0:(Nz-1), k in 0:(Nz-1)]
+    M = Tridiagonal(zeros(T, Nr-1), ones(T, Nr), zeros(T, Nr-1))  # fill with ones so I can allocate lu Array
     LU = lu(M)
     M .= 0.0 # reset
     S = zero(Ψ)
@@ -237,7 +234,7 @@ function update_interpolation!(canvas::Canvas)
     return canvas._Ψitp
 end
 
-@recipe function plot_canvas(canvas::Canvas; plot_coils::Union{Bool, Symbol}=true)
+@recipe function plot_canvas(canvas::Canvas; plot_coils=true)
     Rs, Zs, Ψ, coils, Rw, Zw, Ψbnd, Rbt, Zbt = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.coils, canvas.Rw, canvas.Zw, canvas.Ψbnd, canvas._Rb_target, canvas._Zb_target
 
     aspect_ratio --> :equal
@@ -296,24 +293,4 @@ end
             Rs, Zs, Ψ'
         end
     end
-end
-
-
-# Psuedo-temporary initialization function
-function init_from_dd(file::String=(@__DIR__) * "/../examples/D3D_case/dd.json";
-                      alpha_m::Real = 0.6, alpha_n::Real = 0.6, Nr::Int=65, Nz::Int=Nr)
-    dd = IMAS.json2imas(file)
-    eq1d = dd.equilibrium.time_slice[].profiles_1d
-    # paxis = eq1d.pressure[1]
-    # profile = PaxisIp(paxis, alpha_m, alpha_n)
-    psi_norm = eq1d.psi_norm
-    # gpp = IMAS.interp1d(psi_norm, eq1d.dpressure_dpsi, :cubic)
-    # pprime  = x -> gpp(x)
-    # gffp =  IMAS.interp1d(psi_norm, eq1d.f_df_dpsi, :cubic)
-    # ffprime = x -> gffp(x)
-    pprime = DataInterpolations.CubicSpline(eq1d.dpressure_dpsi, psi_norm; extrapolate=true)
-    ffprime = DataInterpolations.CubicSpline(eq1d.f_df_dpsi, psi_norm; extrapolate=true)
-    profile = PprimeFFprime(pprime, ffprime)
-    canvas = Canvas(deepcopy(dd), Nr)
-    return dd, profile, canvas
 end

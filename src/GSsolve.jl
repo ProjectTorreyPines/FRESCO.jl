@@ -4,10 +4,11 @@ function invert_GS!(canvas::Canvas; reset_boundary_flux=false, update_Ψitp::Boo
     Rs, Zs, Ψpl, Jt, a, b, c = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas._Jt, canvas._a, canvas._b, canvas._c
     MST, u, A, B, M, LU, S, tmp = canvas._MST, canvas._u, canvas._A, canvas._B, canvas._M, canvas._LU, canvas._S, canvas._tmp_Ψ
 
+    # Here each N is subtracted by one, as the implemented algorithm assumes 0:N indexing
     Nr = length(Rs) - 1
     Nz = length(Zs) - 1
-    hr = (Rs[end] - Rs[1]) / Nr
-    hz = (Zs[end] - Zs[1]) / Nz
+    hr = Base.step(Rs)
+    hz = Base.step(Zs)
     hr2 = hr ^ 2
     hz2 = hz ^ 2
     hr2_hz2 = hr2 / hz2
