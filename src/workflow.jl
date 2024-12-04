@@ -5,13 +5,17 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 relax::Real=0.5,
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
-                initialize=true)
+                fixed_coils::AbstractVector{Int}=Int[],
+                initialize_current=true,
+                initialize_mutuals=(control === :eddy))
 
-    @assert control in (nothing, :shape, :vertical, :radial, :position)
+    @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy)
 
-    if initialize
+    if initialize_current
         J = (x,y) -> initial_current(canvas, x, y)
         gridded_Jtor!(canvas, J)
+    else
+        gridded_Jtor!(canvas)
     end
 
     set_Ψvac!(canvas)
@@ -19,7 +23,14 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
     Ψt0 = deepcopy(Ψ)
     Ψp0 = deepcopy(Ψpl)
 
+    if initialize_mutuals
+        set_mutuals!(canvas)
+        set_flux_at_coils!(canvas)
+    end
+
     sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
+    converged = false
+    error_outer = 0.0
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
@@ -29,12 +40,12 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
             Ψai = canvas.Ψaxis
             Ψt0 .= Ψ
             Ψp0 .= Ψpl
-            invert_GS!(canvas)
-            if (i != 1.0)
+            invert_GS!(canvas; update_Ψitp=false)  # interpolation updated after relaxation
+            if !initialize_current || (i != 1)
                 @. Ψ   = (1.0 - relax) * Ψt0 + relax * Ψ
                 @. Ψpl = (1.0 - relax) * Ψp0 + relax * Ψpl
             end
-            update_bounds!(canvas)
+            update_bounds!(canvas; update_Ψitp=true)
             Jtor!(canvas, profile)
             error_inner = abs((canvas.Ψaxis - Ψai) / (relax * Ψai))
             if sum(debug) == 2
@@ -42,26 +53,33 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 #j>1 && display(plot(canvas))
             end
         end
-        if (control === :shape)
-            j == 1 && println("WARNING: Need to update definition of fixed coils as input or programmatically")
-            fixed = 1:6
-            shape_control!(canvas, fixed)
+        if control === :shape
+            shape_control!(canvas, fixed_coils)
+        elseif control === :radial
+            radial_feedback!(canvas, Rtarget, 0.5)
+        elseif control === :vertical
+            vertical_feedback!(canvas, Ztarget, 0.5)
+        elseif control === :position
+            axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
+        elseif control === :eddy
+            eddy_control!(canvas)
         end
-
-        (control === :radial) && radial_feedback!(canvas, Rtarget, 0.5)
-        (control === :vertical) && vertical_feedback!(canvas, Ztarget, 0.5)
-        (control === :position) && axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
-
-        sync_Ψ!(canvas)
-        update_bounds!(canvas)
+        sync_Ψ!(canvas; update_Ψitp=true)
+        update_bounds!(canvas; update_Ψitp=false)
         Jtor!(canvas, profile)
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         sum(debug) > 0 && println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_outer)
         sum(debug) == 2 && display(plot(canvas))
         if error_outer < tolerance
+            converged = true
             break
         end
     end
 
-    return canvas
+    if !converged && tolerance > 0.0
+        sum(debug) > 0 && @warn "FRESCO did not converged to $(error_outer) > $(tolerance) in $(Nout) iterations"
+        return 1
+    end
+
+    return 0
 end

@@ -35,6 +35,25 @@ function gridded_Jtor!(canvas::Canvas, Jtor)
     return canvas
 end
 
+# Jt from finite difference of Ψ
+function gridded_Jtor!(canvas::Canvas)
+    Rs, Zs, Ψ, Jt, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Jt, canvas._is_inside
+    Jt .= 0.0
+    hr, hz = step(Rs), step(Zs)
+    # Compute (1/R) Δ*Ψ
+    for (i, x) in enumerate(Rs)
+        (i == 1 || i == length(Rs)) && continue
+        for (j, y) in enumerate(Zs)
+            (j == 1 || j == length(Zs)) && continue
+            if is_inside[i, j]
+                Jt[i, j]  = (Ψ[i, j+1] - 2 * Ψ[i, j] + Ψ[i, j-1]) / (x * hz ^ 2)
+                Jt[i, j] += 2.0 * ((Ψ[i+1, j] - Ψ[i, j]) / (Rs[i+1] + x) - (Ψ[i, j] - Ψ[i-1, j]) / (x + Rs[i-1])) / (hr ^ 2)
+            end
+        end
+    end
+    Jt ./= 2π * μ₀
+end
+
 # Based on https://arxiv.org/pdf/1503.03135
 abstract type CurrentProfile end
 
@@ -54,13 +73,23 @@ mutable struct PaxisIp{T} <: CurrentProfile
     Beta0::T
 end
 
-mutable struct PprimeFFprime{F1<:Function, F2<:Function} <: CurrentProfile
+const FuncInterp = Union{Function, DataInterpolations.AbstractInterpolation}
+
+mutable struct PprimeFFprime{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
     pprime::F1
     ffprime::F2
     ffp_scale::Float64
 end
 
-PprimeFFprime(pprime::Function, ffprime::Function) = PprimeFFprime(pprime, ffprime, 1.0)
+PprimeFFprime(pprime::FuncInterp, ffprime::FuncInterp) = PprimeFFprime(pprime, ffprime, 1.0)
+
+function PprimeFFprime(dd::IMAS.dd)
+    eq1d = dd.equilibrium.time_slice[].profiles_1d
+    psi_norm = eq1d.psi_norm
+    pprime = DataInterpolations.CubicSpline(eq1d.dpressure_dpsi, psi_norm; extrapolate=true)
+    ffprime = DataInterpolations.CubicSpline(eq1d.f_df_dpsi, psi_norm; extrapolate=true)
+    return PprimeFFprime(pprime, ffprime)
+end
 
 @inline shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
 
@@ -82,7 +111,7 @@ end
 
 
 function Jtor!(canvas::Canvas, profile::BetapIp)
-    Rs, Zs, Ψ, Ip, Raxis = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis
+    Rs, Zs, Ψ, Ip, Raxis, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas._is_inside
     ellipse = compute_ellipse(canvas)
     p_int = zero(eltype(Ψ))
     IR    = zero(eltype(Ψ))

@@ -82,3 +82,40 @@ function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}=Int[])
     set_Ψvac!(canvas)
     return canvas
 end
+
+function set_mutuals!(canvas::Canvas)
+    coils, mutuals = canvas.coils, canvas._mutuals
+
+    # store mutuals in mutuals
+    for j in eachindex(coils)
+        for i in eachindex(coils)
+            if i < j
+                mutuals[i, j] = mutuals[j, i]
+            else
+                mutuals[i, j] = VacuumFields.mutual(coils[i], coils[j])
+            end
+        end
+    end
+    canvas._mutuals_LU = lu(mutuals)
+    return canvas
+end
+
+function eddy_control!(canvas::Canvas)
+    coils, Ψ_at_coils, tmp, mutuals_LU = canvas.coils, canvas._Ψ_at_coils, canvas._tmp_Ncoils, canvas._mutuals_LU
+    gridded_Jtor!(canvas)
+
+    # tmp is flux from coils at each coil
+    tmp .= Ψ_at_coils
+    for k in eachindex(coils)
+        tmp[k] -= plasma_flux_at_coil(k, canvas)
+    end
+    # poloidal flux from one coil to another is -M * current_per_turn
+    # so current per turn = - M \ flux
+    # here we overwrite tmp, so it winds up being current_per_turn
+    ldiv!(mutuals_LU, tmp)
+    tmp .*= -1
+    for (k, coil) in enumerate(coils)
+        VacuumFields.set_current!(coil, VacuumFields.turns(coil) * tmp[k])
+    end
+    set_Ψvac!(canvas)
+end
