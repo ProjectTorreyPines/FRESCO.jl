@@ -31,6 +31,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
     sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
     converged = false
     error_outer = 0.0
+    update_surfaces = (profile isa PressureJtoR)
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
@@ -46,7 +47,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 @. Ψpl = (1.0 - relax) * Ψp0 + relax * Ψpl
             end
             update_bounds!(canvas; update_Ψitp=true)
-            Jtor!(canvas, profile)
+            Jtor!(canvas, profile; update_surfaces=false)
             error_inner = abs((canvas.Ψaxis - Ψai) / (relax * Ψai))
             if sum(debug) == 2
                 println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_inner)
@@ -64,9 +65,11 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
         elseif control === :eddy
             eddy_control!(canvas)
         end
+
         sync_Ψ!(canvas; update_Ψitp=true)
         update_bounds!(canvas; update_Ψitp=false)
-        Jtor!(canvas, profile)
+        Jtor!(canvas, profile; update_surfaces)
+
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         sum(debug) > 0 && println("Iteration $(j):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_outer)
         sum(debug) == 2 && display(plot(canvas))

@@ -123,10 +123,7 @@ function compute_FSAs!(canvas::Canvas; update_surfaces=false)
     update_surfaces && trace_surfaces!(canvas)
     surfaces, Vp, gm1 = canvas._surfaces, canvas._Vp, canvas._gm1
     N = length(surfaces)
-    # T = typeof(surfaces[1].psi)
 
-    # gm1 = Vector{T}(undef, N)
-    # Vp  = Vector{T}(undef, N)
     sign_dpsi = sign(surfaces[end].psi - surfaces[1].psi)
 
     for k in N:-1:1 #(k, surface) in enumerate(surfaces)

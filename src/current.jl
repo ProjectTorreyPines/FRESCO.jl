@@ -91,6 +91,26 @@ function PprimeFFprime(dd::IMAS.dd)
     return PprimeFFprime(pprime, ffprime)
 end
 
+mutable struct PressureJtoR{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+    pressure::F1
+    JtoR::F2 # <Jt / R>
+    J_scale::Float64
+end
+
+PressureJtoR(pressure::FuncInterp, JtoR::FuncInterp) = PressureJtoR(pressure, JtoR, 1.0)
+
+function PressureJtoR(dd::IMAS.dd)
+    eq1d = dd.equilibrium.time_slice[].profiles_1d
+    psi_norm = eq1d.psi_norm
+    pressure = DataInterpolations.CubicSpline(eq1d.pressure, psi_norm; extrapolate=true)
+    JtoR = DataInterpolations.CubicSpline(eq1d.j_tor .* eq1d.gm9, psi_norm; extrapolate=true)
+    return PressureJtoR(pressure, JtoR)
+end
+
+mutable struct SigmaQ{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+    sigma::F1
+    q::F2
+end
 @inline shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
 
 function shape_integral(canvas::Canvas, profile::Union{BetapIp, PaxisIp}, psi_norm)
@@ -110,7 +130,7 @@ function BetapIp(betap,alpha_m,alpha_n)
 end
 
 
-function Jtor!(canvas::Canvas, profile::BetapIp)
+function Jtor!(canvas::Canvas, profile::BetapIp; kwargs...)
     Rs, Zs, Ψ, Ip, Raxis, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas._is_inside
     ellipse = compute_ellipse(canvas)
     p_int = zero(eltype(Ψ))
@@ -164,7 +184,7 @@ function PaxisIp(paxis, alpha_m, alpha_n)
     return PaxisIp(paxis, alpha_m, alpha_n, zero(paxis), zero(paxis))
 end
 
-function Jtor!(canvas::Canvas, profile::PaxisIp)
+function Jtor!(canvas::Canvas, profile::PaxisIp; kwargs...)
     Rs, Zs, Ψ, Ip, Raxis, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas.Raxis, canvas._is_inside
 
     IR    = zero(eltype(Ψ))
@@ -209,23 +229,39 @@ function Jtor!(canvas::Canvas, profile::PaxisIp)
     return Jt
 end
 
-function pprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    return (p.L*p.Beta0/canvas.Raxis) * shape_function(psi_norm, profile)
+function pprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psi_norm)
+    return (profile.L * profile.Beta0 / canvas.Raxis) * shape_function(psi_norm, profile)
 end
 
-function ffprime(canvas::Canvas,p::Union{BetapIp,PaxisIp}, psi_norm)
-    return μ₀*p.L*(1 - p.Beta0) * shape_function(psi_norm, profile)
+function ffprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psi_norm)
+    return μ₀ * profile.L * (1 - profile.Beta0) * shape_function(psi_norm, profile)
 end
 
-function pprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
-    p.pprime(psi_norm)
+function pprime(canvas::Canvas, profile::PprimeFFprime, psi_norm)
+    profile.pprime(psi_norm)
 end
 
-function ffprime(canvas::Canvas, p::PprimeFFprime, psi_norm)
-    p.ffprime(psi_norm) * p.ffp_scale
+function ffprime(canvas::Canvas, profile::PprimeFFprime, psi_norm)
+    profile.ffprime(psi_norm) * profile.ffp_scale
 end
 
-function Jtor!(canvas::Canvas, profile::PprimeFFprime)
+function pprime(canvas::Canvas, profile::PressureJtoR, psi_norm)
+    return DataInterpolations.derivative(profile.pressure, psi_norm) / (canvas.Ψbnd - canvas.Ψaxis)
+end
+
+function ffprime(canvas::Canvas, profile::PressureJtoR, psi_norm)
+    gm1 = canvas._gm1
+    psin = range(0.0, 1.0, length(gm1))
+    gitp = DataInterpolations.CubicSpline(gm1, psin; extrapolate=false)
+    return ffprime(canvas, profile, psi_norm, gitp(psi_norm))
+end
+
+function ffprime(canvas::Canvas, profile::PressureJtoR, psi_norm::Real, gm1::Real)
+    pp = pprime(canvas, profile, psi_norm)
+    return -μ₀ * (pp + profile.J_scale * profile.JtoR(psi_norm) / twopi) / gm1
+end
+
+function Jtor!(canvas::Canvas, profile::PprimeFFprime; kwargs...)
     Rs, Zs, Ψ, Ip, Jt, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Jt, canvas._is_inside
     Jt .= 0.0
 
@@ -263,6 +299,40 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime)
     end
 
     profile.ffp_scale *= fac
+
+    return Jt
+end
+
+function Jtor!(canvas::Canvas, profile::PressureJtoR{F, F}; update_surfaces::Bool) where {F<:DataInterpolations.AbstractInterpolation}
+    Rs, Zs, Ψ, Ψaxis, Ψbnd, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd, canvas.Ip
+    Jt, is_inside, Vp, gm1 = canvas._Jt, canvas._is_inside, canvas._Vp, canvas._gm1
+
+    Jt .= 0.0
+    FRESCO.compute_FSAs!(canvas; update_surfaces)
+
+    x = range(0.0, 1.0, length(Vp))
+    psic  = (Ψbnd - Ψaxis) .* x
+    VJ = (k, xx) -> Vp[k] * profile.JtoR(x[k])
+    Ic = trapz(psic, VJ) / (2π)
+    profile.J_scale = Ip / Ic
+
+    gitp =  DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
+
+    inv_ΔΨ = 1.0 / (Ψbnd - Ψaxis)
+    pprime  = x -> DataInterpolations.derivative(profile.pressure, x) * inv_ΔΨ
+
+    for (i,R) in enumerate(Rs)
+        inv_R = 1.0 / R
+        R2 = R ^ 2
+        for (j, z) in enumerate(Zs)
+            if is_inside[i, j]
+                psin = psinorm(Ψ[i, j], canvas)
+                pterm = twopi * (R2 - 1.0 / gitp(psin)) * pprime(psin)
+                jterm = profile.J_scale * profile.JtoR(psin) / gitp(psin)
+                Jt[i, j] = -inv_R * (pterm - jterm)
+            end
+        end
+    end
 
     return Jt
 end
