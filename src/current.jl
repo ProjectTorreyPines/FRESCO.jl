@@ -387,15 +387,16 @@ end
 
 function Jtor!(canvas::Canvas, profile::PressureJt{F, F}; update_surfaces::Bool) where {F<:DataInterpolations.AbstractInterpolation}
     Rs, Zs, Ψ, Ψaxis, Ψbnd, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd, canvas.Ip
-    Jt, is_inside, Vp, gm1 = canvas._Jt, canvas._is_inside, canvas._Vp, canvas._gm1
+    Jt, is_inside, Vp, gm1, gm9 = canvas._Jt, canvas._is_inside, canvas._Vp, canvas._gm1, canvas._gm9
 
     Jt .= 0.0
     FRESCO.compute_FSAs!(canvas; update_surfaces)
+
+    x = range(0.0, 1.0, length(Vp))
     gm1itp =  DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
     gm9itp =  DataInterpolations.CubicSpline(gm9, x; extrapolate=false)
 
 
-    x = range(0.0, 1.0, length(Vp))
     psic  = (Ψbnd - Ψaxis) .* x
     VJ = (k, xx) -> Vp[k] * profile.Jt(x[k]) * gm9itp(x[k])
     Ic = trapz(psic, VJ) / (2π)
