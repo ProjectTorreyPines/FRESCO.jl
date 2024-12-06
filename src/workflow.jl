@@ -31,7 +31,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
     sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
     converged = false
     error_outer = 0.0
-    update_surfaces = (profile isa PressureJtoR)
+    update_surfaces = profile isa Union{PressureJtoR, PressureJt}
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
         #Ψ .= 0.0
