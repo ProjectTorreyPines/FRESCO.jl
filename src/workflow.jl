@@ -5,7 +5,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 relax::Real=0.5,
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
-                fixed_coils::AbstractVector{Int}=Int[],
+                fixed_coils::AbstractVector{Int}=canvas._fixed_coils,
                 initialize_current=true,
                 initialize_mutuals=(control === :eddy))
 

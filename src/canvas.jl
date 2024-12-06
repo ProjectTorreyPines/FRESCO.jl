@@ -30,6 +30,7 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:AbstractInterpolation, C1<
     _rs_circuit::C2
     _Ψ_at_coils::Vector{T}
     _tmp_Ncoils::Vector{T}
+    _fixed_coils::Vector{Int}
     _mutuals::Matrix{T}
     _mutuals_LU::LU{T, Matrix{T}, Vector{Int}}
     _a::Vector{T}
@@ -91,11 +92,25 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
 
     # define coils
     coils = VacuumFields.MultiCoils(dd; load_pf_active, load_pf_passive)
+    fixed_coils = Int[]
+    if load_pf_active
+        kpassive0 = length(dd.pf_active.coil)
+        for (k, coil) in enumerate(dd.pf_active.coil)
+            if :shaping ∉ (IMAS.index_2_name(coil.function)[f.index] for f in coil.function)
+                push!(fixed_coils, k)
+            end
+        end
+    else
+        kpassive0 = 0
+    end
+    if load_pf_passive
+        fixed_coils = vcat(fixed_coils, kpassive0 .+ eachindex(dd.pf_passive.loop))
+    end
 
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), surfaces)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), surfaces; fixed_coils)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -110,11 +125,12 @@ function Canvas(Rs::AbstractRange{T},
                 Rw::Vector{T},
                 Zw::Vector{T},
                 Rb_target::Vector{T},
-                Zb_target::Vector{T}) where {T<:Real}
+                Zb_target::Vector{T};
+                fixed_coils::Vector{Int}=Int[]) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     Ψ = zeros(T, Nr, Nz)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Rb_target, Zb_target, surfaces)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Rb_target, Zb_target, surfaces; fixed_coils)
 end
 
 function Canvas(Rs::AbstractRange{T},
@@ -126,7 +142,8 @@ function Canvas(Rs::AbstractRange{T},
                 Zw::Vector{T},
                 Rb_target::Vector{T},
                 Zb_target::Vector{T},
-                surfaces::Vector{<:IMAS.SimpleSurface}) where {T<:Real}
+                surfaces::Vector{<:IMAS.SimpleSurface};
+                fixed_coils::Vector{Int}=Int[]) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     @assert size(Ψ) == (Nr, Nz)
     hr = Base.step(Rs)
@@ -175,7 +192,7 @@ function Canvas(Rs::AbstractRange{T},
     r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
                   SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
-                  vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, mutuals, mutuals_LU, a, b, c, MST, u,
+                  vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
                   A, B, M, LU, S, tmp_Ψ, surfaces, Vp, gm1, gm9, r_cache, z_cache)
 end
 
