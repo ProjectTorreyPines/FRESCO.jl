@@ -47,7 +47,7 @@ function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
                 @. Ψpl = (1.0 - relax) * Ψp0 + relax * Ψpl
             end
             update_bounds!(canvas; update_Ψitp=true)
-            Jtor!(canvas, profile; update_surfaces=false)
+            Jtor!(canvas, profile; update_surfaces=(j==1 && i==1))
             error_inner = abs((canvas.Ψaxis - Ψai) / (relax * Ψai))
             if sum(debug) == 2
                 println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_inner)

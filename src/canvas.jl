@@ -51,11 +51,7 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:AbstractInterpolation, C1<
     _z_cache::Vector{T}
 end
 
-function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_pf_passive=true) where {T<:Real}
-
-    wall_r, wall_z = IMAS.first_wall(dd.wall)
-    wall_r, wall_z = collect(wall_r), collect(wall_z)
-    #Rs, Zs = range(extrema(wall_r)..., Nr), range(extrema(wall_z)..., Nz)
+function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active::Bool=true, load_pf_passive::Bool=true) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
@@ -72,6 +68,22 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_p
         Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
+    canvas = Canvas(dd, Rs, Zs, Ψ; load_pf_active, load_pf_passive)
+
+    update_bounds!(canvas)
+    trace_surfaces!(canvas)
+    gridded_Jtor!(canvas)
+    return canvas
+end
+
+function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
+                Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
+                load_pf_active=true, load_pf_passive=true) where {T<:Real}
+
+    wall_r, wall_z = IMAS.first_wall(dd.wall)
+    wall_r, wall_z = collect(wall_r), collect(wall_z)
+
+    eqt = dd.equilibrium.time_slice[]
     boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     # define current
@@ -80,16 +92,13 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active=true, load_p
     # define coils
     coils = VacuumFields.MultiCoils(dd; load_pf_active, load_pf_passive)
 
-    Ns = length(eqt.profiles_1d.psi)
-    surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Ns)
+    Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
+    surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
     canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), surfaces)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
-    update_bounds!(canvas)
-    trace_surfaces!(canvas)
-    gridded_Jtor!(canvas)
 
     return canvas
 end
@@ -163,7 +172,7 @@ function Canvas(Rs::AbstractRange{T},
     Vp  = zeros(length(surfaces))
     gm1 = zeros(length(surfaces))
     gm9 = zeros(length(surfaces))
-    r_cache, z_cache = IMASutils.contour_cache(Ψ)
+    r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
                   SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, mutuals, mutuals_LU, a, b, c, MST, u,
