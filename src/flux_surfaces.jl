@@ -118,23 +118,25 @@ function trace_surfaces!(canvas::Canvas)
     return IMAS.trace_simple_surfaces!(surfaces, psi_levels, Rs, Zs, Ψ, Ψitp, Raxis, Zaxis, Rw, Zw, r_cache, z_cache)
 end
 
-
 function compute_FSAs!(canvas::Canvas; update_surfaces=false)
     update_surfaces && trace_surfaces!(canvas)
-    surfaces, Vp, gm1 = canvas._surfaces, canvas._Vp, canvas._gm1
-    N = length(surfaces)
+    surfaces, Vp, gm1, gm9 = canvas._surfaces, canvas._Vp, canvas._gm1, canvas._gm9
 
     sign_dpsi = sign(surfaces[end].psi - surfaces[1].psi)
 
-    for k in N:-1:1 #(k, surface) in enumerate(surfaces)
-        surface = surfaces[k]
-        # gm1 = <1/R^2>
-        f = (j, xx) ->  surface.fluxexpansion[j] / surface.r[j] ^ 2
-        gm1[k] = trapz(surface.ll, f) / surface.int_fluxexpansion_dl
+    for (k, surface) in enumerate(surfaces)
 
         # Vp = dvolume_dpsi
         Vp[k] = sign_dpsi * surface.int_fluxexpansion_dl
+
+        # gm1 = <1/R^2>
+        f1 = (j, xx) ->  surface.fluxexpansion[j] / surface.r[j] ^ 2
+        gm1[k] = IMAS.flux_surface_avg(f1, surface)
+
+        # gm9 = <1/R>
+        f9 = (j, xx) ->  surface.fluxexpansion[j] / surface.r[j]
+        gm9[k] = IMAS.flux_surface_avg(f9, surface)
     end
 
-    return gm1, Vp
+    return Vp, gm1, gm9
 end

@@ -46,6 +46,7 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:AbstractInterpolation, C1<
     _surfaces::Vector{IMAS.SimpleSurface{T}}
     _Vp::Vector{T}
     _gm1::Vector{T}
+    _gm9::Vector{T}
     _r_cache::Vector{T}
     _z_cache::Vector{T}
 end
@@ -161,11 +162,12 @@ function Canvas(Rs::AbstractRange{T},
     zt = zero(T)
     Vp  = zeros(length(surfaces))
     gm1 = zeros(length(surfaces))
+    gm9 = zeros(length(surfaces))
     r_cache, z_cache = IMASutils.contour_cache(Ψ)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
                   SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, mutuals, mutuals_LU, a, b, c, MST, u,
-                  A, B, M, LU, S, tmp_Ψ, surfaces, Vp, gm1, r_cache, z_cache)
+                  A, B, M, LU, S, tmp_Ψ, surfaces, Vp, gm1, gm9, r_cache, z_cache)
 end
 
 function bnd2mat(Nr::Int, Nz::Int, k::Int)
