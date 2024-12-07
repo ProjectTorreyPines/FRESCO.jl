@@ -1,6 +1,6 @@
 function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
-                Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
-                Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
+                Rtarget = 0.5 * sum(extrema([[cps.R1 for cps in canvas.iso_cps]; canvas.iso_cps[1].R2])),
+                Ztarget = [[cps.Z1 for cps in canvas.iso_cps]; canvas.iso_cps[1].Z2][argmax([[cps.R1 for cps in canvas.iso_cps]; canvas.iso_cps[1].R2])],
                 debug=0,
                 relax::Real=0.5,
                 tolerance::Real=0.0,
