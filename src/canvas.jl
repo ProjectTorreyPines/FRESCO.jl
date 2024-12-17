@@ -24,9 +24,11 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:AbstractInterpolation, C1<
     _zextrema::Tuple{T,T}
     _is_inside::Matrix{Bool}
     _is_in_wall::Matrix{Bool}
-    iso_cps::Vector{VacuumFields.IsoControlPoint{T}}
-    flux_cps::Vector{VacuumFields.FluxControlPoint{T}}
-    saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}}
+    _Rb_target::Vector{T}
+    _Zb_target::Vector{T}
+    _iso_cps::Vector{VacuumFields.IsoControlPoint{T}}
+    _flux_cps::Vector{VacuumFields.FluxControlPoint{T}}
+    _saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}}
     _vs_circuit::C1
     _rs_circuit::C2
     _Ψ_at_coils::Vector{T}
@@ -83,6 +85,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 coils=nothing) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
+    boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     wall_r, wall_z = map(collect, IMAS.first_wall(dd.wall))
     if isempty(wall_r)
@@ -94,12 +97,13 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     # Boundary control points
     iso_cps = VacuumFields.IsoControlPoints(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
-    # Flux control points
     strike_weight = 1.0 / length(eqt.boundary.strike_point)
-    flux_cps = VacuumFields.FluxControlPoint{T}[]
     for strike_point in eqt.boundary.strike_point
         push!(iso_cps, VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, strike_weight))
     end
+
+    # Flux control points
+    flux_cps = VacuumFields.FluxControlPoint{T}[]
 
     # Saddle control points
     saddle_weight = 1.0
@@ -130,7 +134,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -144,6 +148,8 @@ function Canvas(Rs::AbstractRange{T},
                 coils::CoilVectorType,
                 Rw::Vector{T},
                 Zw::Vector{T},
+                Rb_target::Vector{T},
+                Zb_target::Vector{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}};
@@ -151,7 +157,7 @@ function Canvas(Rs::AbstractRange{T},
     Nr, Nz = length(Rs), length(Zs)
     Ψ = zeros(T, Nr, Nz)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw,  Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
 end
 
 function Canvas(Rs::AbstractRange{T},
@@ -161,6 +167,8 @@ function Canvas(Rs::AbstractRange{T},
                 coils::CoilVectorType,
                 Rw::Vector{T},
                 Zw::Vector{T},
+                Rb_target::Vector{T},
+                Zb_target::Vector{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
@@ -213,7 +221,7 @@ function Canvas(Rs::AbstractRange{T},
     gm9 = zeros(length(surfaces))
     r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
     return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
-                  SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, 
+                  SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
                   iso_cps, flux_cps, saddle_cps,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
                   A, B, M, LU, S, tmp_Ψ, surfaces, Vp, gm1, gm9, r_cache, z_cache)
@@ -285,8 +293,8 @@ function update_interpolation!(canvas::Canvas)
     return canvas._Ψitp
 end
 
-@recipe function plot_canvas(canvas::Canvas; plot_coils=true)
-    Rs, Zs, Ψ, coils, Rw, Zw, Ψbnd, iso_cps, flux_cps, saddle_cps = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.coils, canvas.Rw, canvas.Zw, canvas.Ψbnd, canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
+@recipe function plot_canvas(canvas::Canvas; plot_coils=true, plot_target_boundary=false, plot_control_points=true)
+    Rs, Zs, Ψ, Rw, Zw, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Rw, canvas.Zw, canvas.Ψbnd
 
     aspect_ratio --> :equal
     pmin, pmax = extrema(Ψ)
@@ -314,7 +322,7 @@ end
                 cname := :BrBG_7
                 colorbar_entry := false
             end
-            coils
+            canvas.coils
         end
     end
     if plot_coils !== :only
@@ -326,14 +334,34 @@ end
             c --> :black
             Rw, Zw
         end
-        @series begin
-            iso_cps
+        if plot_target_boundary
+
+            @series begin
+                label --> nothing
+                seriestype --> :path
+                linewidth --> 3
+                linestyle --> :solid
+                c --> :limegreen
+                canvas._Rb_target, canvas._Zb_target
+            end
         end
-        @series begin
-            flux_cps
-        end
-        @series begin
-            saddle_cps
+        if plot_control_points
+            @series begin
+                connected := false
+                markersize := 3
+                markerstrokewidth := 0
+                canvas._iso_cps
+            end
+            @series begin
+                markersize := 3
+                markerstrokewidth := 0
+                canvas._flux_cps
+            end
+            @series begin
+                markersize := 3
+                markerstrokewidth := 0
+                canvas._saddle_cps
+            end
         end
         @series begin
             seriestype --> :contour
