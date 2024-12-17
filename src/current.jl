@@ -3,6 +3,7 @@ function initial_current(canvas::Canvas, R::Real, Z::Real)
     Rb, Zb, Ip = canvas._Rb_target, canvas._Zb_target, canvas.Ip
     Rmin, Rmax = extrema(Rb)
     Zmin, Zmax = extrema(Zb)
+
     R0 = 0.5 * (Rmax + Rmin)
     Z0 = 0.5 * (Zmax + Zmin)
     a = 0.4 * (Rmax - Rmin)
