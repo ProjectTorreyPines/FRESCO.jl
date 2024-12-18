@@ -81,8 +81,8 @@ end
 
 function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
-                load_pf_active=true, load_pf_passive=true,
-                coils=nothing) where {T<:Real}
+                coils=nothing, load_pf_active=true, load_pf_passive=true,
+                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
     boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
@@ -97,16 +97,15 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     # Boundary control points
     iso_cps = VacuumFields.IsoControlPoints(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
-    strike_weight = 1.0 / length(eqt.boundary.strike_point)
-    for strike_point in eqt.boundary.strike_point
-        push!(iso_cps, VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, strike_weight))
-    end
+    strike_weight = strike_points_weight / length(eqt.boundary.strike_point)
+    strike_cps = VacuumFields.IsoControlPoint{T}[VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, strike_weight) for strike_point in eqt.boundary.strike_point]
+    append!(iso_cps, strike_cps)
 
     # Flux control points
     flux_cps = VacuumFields.FluxControlPoint{T}[]
 
     # Saddle control points
-    saddle_weight = 1.0
+    saddle_weight = x_points_weight / length(eqt.boundary.x_point)
     saddle_cps = VacuumFields.SaddleControlPoint{T}[VacuumFields.SaddleControlPoint{T}(x_point.r, x_point.z, saddle_weight) for x_point in eqt.boundary.x_point]
 
     # define coils
