@@ -334,7 +334,6 @@ end
             Rw, Zw
         end
         if plot_target_boundary
-
             @series begin
                 label --> nothing
                 seriestype --> :path
@@ -346,19 +345,12 @@ end
         end
         if plot_control_points
             @series begin
-                connected := false
-                markersize := 3
-                markerstrokewidth := 0
                 canvas._iso_cps
             end
             @series begin
-                markersize := 3
-                markerstrokewidth := 0
                 canvas._flux_cps
             end
             @series begin
-                markersize := 3
-                markerstrokewidth := 0
                 canvas._saddle_cps
             end
         end
