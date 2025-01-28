@@ -145,6 +145,15 @@ mutable struct SigmaQ{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
     sigma::F1
     q::F2
 end
+
+function SigmaQ(dd::IMAS.dd)
+    eq1d = dd.equilibrium.time_slice[].profiles_1d
+    psi_norm = eq1d.psi_norm
+    sigma = DataInterpolations.CubicSpline(eq1d.pressure .* (eq1d.dvolume_dpsi .^ (5.0 / 3.0)), psi_norm; extrapolate=true)
+    q = DataInterpolations.CubicSpline(eq1d.q, psi_norm; extrapolate=true)
+    return SigmaQ(sigma, q)
+end
+
 @inline shape_function(psi_norm::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psi_norm ^ profile.alpha_m) ^ profile.alpha_n
 
 function shape_integral(canvas::Canvas, profile::Union{BetapIp, PaxisIp}, psi_norm)
@@ -415,6 +424,38 @@ function Jtor!(canvas::Canvas, profile::PressureJt{F, F}; update_surfaces::Bool)
                 pterm = twopi * (R2 - 1.0 / gm1itp(psin)) * pprime(psin)
                 jterm = profile.J_scale * profile.Jt(psin) * gm9itp(psin) / gm1itp(psin)
                 Jt[i, j] = -inv_R * (pterm - jterm)
+            end
+        end
+    end
+
+    return Jt
+end
+
+function Jtor!(canvas::Canvas, profile::SigmaQ; update_surfaces::Bool)
+    Rs, Zs, Ψ, Ψaxis, Ψbnd, Jt, is_inside, surfaces, Vp, gm1 = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd, canvas._Jt, canvas._is_inside, canvas._surfaces, canvas._Vp, canvas._gm1
+    Jt .= 0.0
+    FRESCO.compute_FSAs!(canvas; update_surfaces)
+
+    psi_norm = range(0, 1, length(Vp))
+    p = profile.sigma.(psi_norm) ./ (Vp .^ (5/3.))
+    f = 2π .* profile.q.(psi_norm) ./ (Vp .* gm1)
+    pitp = DataInterpolations.LinearInterpolation(p, psi_norm; extrapolate=false)
+    fitp = DataInterpolations.LinearInterpolation(f, psi_norm; extrapolate=false)
+    inv_ΔΨ = 1.0 / (Ψbnd - Ψaxis)
+    pprime  = x ->           DataInterpolations.derivative(pitp, x) * inv_ΔΨ
+    ffprime = x -> fitp(x) * DataInterpolations.derivative(fitp, x) * inv_ΔΨ
+    R = 1.5
+    plt = plot(psi_norm, -2π * (R * pprime.(psi_norm)), lw=2)
+    plot!(plt, psi_norm, -2π * (ffprime.(psi_norm) / (R * μ₀)), lw=2)
+    #println("HI")
+    #plt = plot(psi_norm, 2π .* profile.q.(psi_norm) ./ (Vp .* gm1), lw=2)
+    update_surfaces && display(plt)
+
+    for (i,R) in enumerate(Rs)
+        for (j, z) in enumerate(Zs)
+            if is_inside[i, j]
+                psin = psinorm(Ψ[i, j], canvas)
+                Jt[i, j] = -twopi * (R * pprime(psin) + ffprime(psin) / (μ₀ * R))
             end
         end
     end
