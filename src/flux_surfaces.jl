@@ -122,7 +122,7 @@ end
 function update_Vp!(canvas::Canvas)
     Ip, Vp, surfaces = canvas.Ip, canvas._Vp, canvas._surfaces
     sign_dpsi = sign(Ip)
-    @turbo thread=true for (k, surface) in enumerate(surfaces)
+    Threads.@threads for (k, surface) in enumerate(surfaces)
         Vp[k] = sign_dpsi * surface.int_fluxexpansion_dl
     end
     x = psinorm(canvas)
@@ -133,7 +133,7 @@ end
 gm1_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j] ^ 2
 function update_gm1!(canvas::Canvas)
     gm1, surfaces = canvas._gm1, canvas._surfaces
-    @turbo thread=true for (k, surface) in enumerate(surfaces)
+    Threads.@threads for (k, surface) in enumerate(surfaces)
         f1 = (j, xx) -> gm1_integrand(j, surface)
         gm1[k] = IMAS.flux_surface_avg(f1, surface)
     end
@@ -145,7 +145,7 @@ end
 gm9_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j]
 function update_gm9!(canvas::Canvas)
     gm1, surfaces = canvas._gm1, canvas._surfaces
-    @turbo thread=true for (k, surface) in enumerate(surfaces)
+    Threads.@threads for (k, surface) in enumerate(surfaces)
         f9 = (j, xx) -> gm9_integrand(j, surface)
         gm9[k] = IMAS.flux_surface_avg(f9, surface)
     end
