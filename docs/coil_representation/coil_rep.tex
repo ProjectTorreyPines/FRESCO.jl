@@ -1,0 +1,150 @@
+\documentclass[reprint,onecolumn,amsmath,aip,pop,letterpaper, 11pt]{revtex4-1}
+
+\usepackage[left=1in,top=1in,right=1in,bottom=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage[english]{babel}
+\usepackage[usenames,dvipsnames,svgnames]{xcolor}
+\usepackage{float,tabulary}
+\usepackage{booktabs, bm}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{soul}
+\setlength{\tabcolsep}{4pt}
+
+\newcommand{\E}[1]{\times 10^{#1}}
+\newcommand{\jac}{\mathcal{J}}
+\newcommand{\tpsi}{\tilde{\psi}}
+\newcommand{\mtdco}{M3D-\textit{C}$^1$}
+\newcommand{\diver}{\nabla\cdot}
+\newcommand{\bu}{\mathbf{u}}
+\newcommand{\bB}{\mathbf{B}}
+\newcommand{\bb}{\mathbf{b}}
+\newcommand{\bE}{\mathbf{E}}
+\newcommand{\bJ}{\mathbf{J}}
+\newcommand{\bR}{\mathbf{R}}
+\newcommand{\Jpar}{J_\parallel}
+\newcommand{\Jt}{J_\varphi}
+\newcommand{\Jtni}{J_{\varphi}^{ni}}
+\newcommand{\Jpni}{J_{\parallel}^{ni}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bdg}{\mathbf{b}\cdot\nabla}
+\newcommand{\fsa}[1]{\left\langle #1 \right\rangle}
+
+\begin{document}
+\title{Implicit coupling of current evolution and Grad-Shafranov equilibrium to a time-evolving coil system}
+
+\author{B.C. Lyons}
+\affiliation{General Atomics}
+
+\maketitle
+
+\section{Overview}
+\label{sec:overview}
+
+For coupling an axisymmetric plasma to a coil system, it can be useful to represent the plasma a single coil, with scalar resistance,  inductance,  and voltage.  This provides a time-evolution equation for the integrated plasma current, which can be used as an implicit, Dirichlet boundary condition on the internal current-density evolution. To be accurate, the scalar quantities must be consistent with the internal ohmic and noninductive current density and resistivity profiles,  as well as the Grad-Shafranov equilibrium.  This document is a work in progress describing the formulation.  
+
+We will work in COCOS 11,  which assumes that $\left(R, \varphi,Z\right)$ and $\left(\rho, \theta, \varphi\right)$ are both right-handed coordinate systems (i.e.,  $\varphi$ is counterclockwise from the top and $\theta$ is clockwise from the front), and the magnetic field is represented by
+\begin{equation}
+\bB = \frac{1}{2\pi}\nabla\varphi\times\nabla\psi + F\nabla\varphi. \label{eq:Bfield}
+\end{equation}
+
+\section{Plasma-Coil Coupling}
+\label{sec:coupling}
+
+In general,  given a set of axisymmetric poloidal field coils (and conducting structures,  which can be considered coils with single turns and no externally driven voltage),  the flux through coil $k$ obeys
+\begin{equation}
+\frac{d\Psi_k}{dt} + R_kI_k = V_k, \label{eq:psik-ev}
+\end{equation}
+where $R_k$ is the resistance, $I_k$ is the current (per turn),  and $V_k$ the externally applied voltage, typically from a power supply.  In addition, the flux can be represented as
+\begin{equation}
+\Psi_k = -\sum_j M_{kj} I_j - M_{pk} I_p, \label{eq:psik}
+\end{equation}
+where $M_{kj}$ is the mutual inductance between coils $k$ and $j$ (including self-inductance for $k=j$), $M_{pk}$ is the mutual inductance between the plasma and coil $k$, and $I_p$ is the plasma current. Note the minus signs follows from the COCOS, such that mutual inductance is always positive and positive current produces negative flux. Also note, that the flux through a coil differs from the equilibrium poloidal flux at the coil location by the number of turns of that coil and an average over the coil area. This is taken into account inside the mutual inductance definition.
+
+The plasma can be represented as a single coil that follows the same form as Eq.  \ref{eq:psik-ev}:
+\begin{equation}
+\frac{d\Psi_p}{dt} + R_pI_p = V_p^{ni}, \label{eq:psip-ev}
+\end{equation}
+where $R_p$ is the scalar plasma resistance and $V_p^{ni}$ is the effective voltage source due to the non-inductive current. The total plasma flux can be written as
+\begin{equation}
+\Psi_p = -L_pI_p - \sum_j M_{pj} I_j, \label{eq:psip1}
+\end{equation}
+where $L_p$ is the scalar self-inductance of the plasma,  which consists of both an internal inductance and external inductance, $L_p = L_i + L_e$.  Thus, we can write
+\begin{equation}
+\Psi_p = -L_iI_p - L_eI_p - \sum_j M_{pj} I_j = -L_i I_p + \psi_b, \label{eq:psip2}
+\end{equation}
+where $\psi_b$ is the poloidal field on the boundary of the plasma, including both plasma current and coil current contributions.  $\psi_b$ is known from the solution to the free-boundary Grad-Shafranov equilibrium.
+
+Unlike the coil-only system, the plasma inductances and resistance of the plasma are time-dependent, both for time-evolving equilibria and a static equilibrium as the internal current profile evolves.
+
+\section{Scalar Plasma Quantities}
+
+To represent the plasma as a coil, we need to compute these scalar quantities for a static equilibrium and current profile. An implicit representation of these quantities is beyond the scope of this work, though something like a predictor-corrector method will be considered.  To compute the scalar quantities, we'll largely rely on Ref.  \onlinecite{romero:2010}.
+
+\subsection{Internal inductance}
+\label{sec:Li}
+The plasma internal inductance is defined as
+\begin{equation}
+L_i = \frac{2 W_p}{I_p^2}, \label{eq:Li}
+\end{equation}
+where $W_p$ is the integrated poloidal magnetic energy, defined as 
+\begin{equation}
+W_p = -\frac{1}{2} \int dS\, \left(\psi - \psi_b\right)\Jt = \frac{1}{2} \int d\psi\, I_t(\psi), \label{eq:Wp}
+\end{equation}
+where $S$ is the plasma area, $\Jt$ is the toroidal current density, and $I_t(\psi)$ is the integrated toroidal current inside a flux surface,  such that $I_p = I_t\left(\psi_b\right)$.  We note that the second, right-hand formulation comes from an integration by parts and that
+\begin{equation}
+I_t(\psi) = \int_\psi dS\, \Jt = \frac{1}{2\pi}\int_\psi dV\, \fsa{\Jt/R}, \label{eq:It}
+\end{equation}
+where $\int_\psi$ indicates the integral is taken from the axis to the $\psi$ flux surface. Thus,  the internal inductance can be easily computed if $\Jt$ and $\psi$ are known in either as flux-surface averages or in 2D $(R,Z)$ space. This information is readily available from a Grad-Shafranov equilibrium.
+
+\subsection{Resistance}
+\label{sec:Rp}
+From Ref. \onlinecite{romero:2010}, the plasma resistance is defined as
+\begin{equation}
+R_p = \frac{1}{I_p^2} \int dS\, \eta \Jt^2,\label{eq:Rp}
+\end{equation}
+where $\eta$ is the resistivity of the plasma, which is taken to be a flux function.  Thus,  the resistance can be easily computed if $\Jt$ and $\psi$ are known as a function of $(R,Z)$. This information is readily available from a Grad-Shafranov equilibrium.
+\pagebreak
+
+\subsection{Non-inductive voltage}
+\label{sec:Vni}
+
+The non-inductive voltage is defined as
+\begin{equation}
+V_p^{ni} = R_pI_p^{ni} = \frac{1}{I_p}\int dS\, \eta \Jt \Jtni,\label{eq:Vni}
+\end{equation}
+where $\Jtni(R,Z)$ is the toroidal, noninductive current density and $I_p^{ni}$ is a \textit{resistivity-weighted}, integrated noninductive current. These are tricky quantities, as typically the noninductive current is given as a parallel, flux-surface-averaged quantity, namely $\fsa{\Jpni B}$. A Grad-Shafranov equilibrium, however, necessitates a very particular poloidal dependence on the current density. In particular, one can write the Grad-Shafranov equation as
+\begin{equation}
+\Delta^*\psi = 2\pi\mu_0 R \Jt = -\mu_0 (2\pi)^2 R^2 p^\prime - (2\pi)^2 FF^\prime, \label{eq:GS}
+\end{equation}
+where $\Delta^*$ is the toroidal elliptic operator, $p$ is the pressure,  and $\prime$ represents a derivative with respect to $\psi$.  Dividing through by $2\pi\mu_0 R^2$ and taken a flux-surface average, one can eliminate $FF^\prime$ in favor of $\fsa{Jt/R}$, finding:
+\begin{equation}
+\Jt = -\frac{2\pi}{R}\left[\left(R^2 - \frac{1}{\fsa{R^{-2}}}\right)p^\prime - \frac{1}{2\pi \fsa{R^{-2}}} \fsa{\Jt/R}\right]. \label{eq:Jt}
+\end{equation}
+This form is currently used in both the TEQUILA and FRESCO Grad-Shafranov codes to solve for the equilibrium while holding $\fsa{\Jt/R}$ fixed.
+
+It can be shown either from single-species flow arguments\cite{belli:2017} or from the forms of $\bB$, $\bJ$, and the Grad-Shafranov equation that
+\begin{equation}
+\fsa{\Jt/R} = F\frac{\fsa{R^{-2}}}{\fsa{B^2}}\fsa{\Jpar B} - 2\pi p^\prime \left(1 - F^2\frac{\fsa{R^{-2}}}{\fsa{B^2}} \right). \label{eq:Jtransform}
+\end{equation}
+Combining Eqs. \ref{eq:Jt} and \ref{eq:Jtransform}, we find that
+\begin{equation}
+\Jt = -\frac{2\pi}{R}\left[\left(R^2 - \frac{F^2}{\fsa{B^2}}\right)p^\prime - \frac{F}{2\pi \fsa{B^2}}\fsa{\Jpar B} \right]. \label{eq:Jt2}
+\end{equation}
+Eq. \ref{eq:Jt2} is valid for the \textit{total} current density.  It must also be valid whether that total density is completely Ohmic or completely non-inductive.  
+
+There are a two ways that we could then divide this, particularly how to separate the toroidal diamagnetic current (the term proportional to $p^\prime$) between the Ohmic and non-inductive currents. First, it could be split proportionally.  Second, the diamagnetic current could be considered wholly non-inductive, which would imply that the toroidal non-inductive current is never zero, even if the parallel non-inductive current is zero. \\
+{\color{Red} \ul{While I could think of arguments for both,  I favor the latter option, which is how things were implemented in OMAS. That said, I could use advice.}}
+
+Under either separation method, it is clear that to compute the non-inductive voltage, we need to compute additional flux-surface quantities, namely $F$, which requires integrating $FF^\prime$, and
+\begin{equation}
+\fsa{B^2} = \frac{1}{(2\pi)^2} \fsa{\frac{\left|\nabla\psi\right|^2}{R^2}} + F^2\fsa{R^{-2}}.\label{eq:B2}
+\end{equation}
+That said,  the implementation of a Grad-Shafranov solver using $\fsa{\Jt/R}$, per Eq. \ref{eq:Jt} or \ref{eq:Jt2}, already requires computing flux surfaces averages, so computing these additional quantities should not be overly burdensome.
+
+\bibliography{ref}
+
+\end{document}
