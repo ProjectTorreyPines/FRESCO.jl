@@ -19,7 +19,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 VacuumFields = "9d9223b5-c5da-4bf4-abee-2a8bb6775a49"
 
 [compat]
-DataInterpolations = "6.0.0"
+DataInterpolations = "7"
 FFMPEG = "0.4"
 HypergeometricFunctions = "0.3"
 IMAS = "2.2.1, 3"
