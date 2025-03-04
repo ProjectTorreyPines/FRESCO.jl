@@ -13,7 +13,7 @@ function set_Ψvac!(canvas::Canvas)
     for k in eachindex(coils)
         Ic = VacuumFields.current(coils[k])
         Ic == 0.0 && continue
-        @turbo for j in eachindex(Zs)
+        @tturbo for j in eachindex(Zs)
             for i in eachindex(Rs)
                 Ψvac[i, j] += Ic * Gvac[i, j, k]
             end

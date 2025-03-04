@@ -14,7 +14,7 @@ using PolygonOps: inpolygon, centroid
 import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
 using Plots
-using LoopVectorization: @turbo
+using LoopVectorization: @turbo, @tturbo
 
 const μ₀ = π * 4e-7
 const twopi = 2π

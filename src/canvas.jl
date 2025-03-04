@@ -62,7 +62,9 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractIn
     _z_cache::Vector{T}
 end
 
-function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active::Bool=true, load_pf_passive::Bool=true) where {T<:Real}
+function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
+                load_pf_active::Bool=true, load_pf_passive::Bool=true,
+                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
     Rimas = IMAS.to_range(eqt2d.grid.dim1)
@@ -78,7 +80,7 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; load_pf_active::Bool=true, 
         Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
-    canvas = Canvas(dd, Rs, Zs, Ψ; load_pf_active, load_pf_passive)
+    canvas = Canvas(dd, Rs, Zs, Ψ; load_pf_active, load_pf_passive, Green_table)
 
     update_bounds!(canvas)
     trace_surfaces!(canvas)
@@ -89,7 +91,8 @@ end
 function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
                 coils=nothing, load_pf_active=true, load_pf_passive=true,
-                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0) where {T<:Real}
+                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
+                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
     boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
@@ -141,7 +144,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -161,11 +164,12 @@ function Canvas(Rs::AbstractRange{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}};
-                fixed_coils::Vector{Int}=Int[]) where {T<:Real}
+                fixed_coils::Vector{Int}=Int[],
+                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     Ψ = zeros(T, Nr, Nz)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
 end
 
 function Canvas(Rs::AbstractRange{T},
@@ -182,7 +186,8 @@ function Canvas(Rs::AbstractRange{T},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
                 surfaces::Vector{<:IMAS.SimpleSurface};
-                fixed_coils::Vector{Int}=Int[]) where {T<:Real}
+                fixed_coils::Vector{Int}=Int[],
+                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     @assert size(Ψ) == (Nr, Nz)
     hr = Base.step(Rs)
@@ -207,7 +212,29 @@ function Canvas(Rs::AbstractRange{T},
     b = a + c
     Ψpl = zero(Ψ)
     Ψvac = zero(Ψ)
-    Gvac = [VacuumFields.Green(coil, r, z) for r in Rs, z in Zs, coil in coils]
+    if isempty(Green_table)
+        Gvac = Array{T, 3}(undef, Nr, Nz, Nc)
+        for (k, coil) in enumerate(coils)
+            # Green isn't threadsafe if coil is a MultiCoil and it's current is 0.0
+            # so we set it to 1.0, compute the Green's functions, and then reset it
+            if coil isa VacuumFields.MultiCoil
+                Ic = VacuumFields.current(coil)
+                Ic == 0.0 && VacuumFields.set_current!(coil, 1.0)
+            end
+            @inbounds @fastmath Threads.@threads for j in eachindex(Zs)
+                z = Zs[j]
+                for (i, r) in enumerate(Rs)
+                    Gvac[i, j, k] = VacuumFields.Green(coil, r, z)
+                end
+            end
+            if coil isa VacuumFields.MultiCoil
+                Ic == 0.0 && VacuumFields.set_current!(coil, Ic)
+            end
+        end
+    else
+        @assert size(Green_table) == (Nr, Nz, Nc) "Green_table is incorrect size for grid and coils"
+        Gvac = Green_table
+    end
     Gbnd = compute_Gbnd(Rs, Zs)
     U = zero(Ψ)
     Jt = zero(Ψ)
