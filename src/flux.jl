@@ -217,7 +217,7 @@ function in_domain(r::Real, z::Real, canvas::Canvas)
 end
 
 # Compute flux at (x, y) using von Hagenow boundary integral if outside plasma
-function plasma_internal_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::AbstractInterpolation)
+function plasma_internal_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::Interpolations.AbstractInterpolation)
     return Ψpl_itp(x, y)
 end
 
@@ -226,7 +226,7 @@ function plasma_internal_flux(x::Real, y::Real, canvas::Canvas, blank::Nothing)
     return Ψpl_itp(x, y)
 end
 
-function plasma_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::Union{Nothing,AbstractInterpolation}=nothing)
+function plasma_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::Union{Nothing,Interpolations.AbstractInterpolation}=nothing)
     Rs, Zs = canvas.Rs, canvas.Zs
     if in_domain(x, y, canvas)
         return plasma_internal_flux(x, y, canvas, Ψpl_itp)
