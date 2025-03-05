@@ -87,8 +87,8 @@ PprimeFFprime(pprime::FuncInterp, ffprime::FuncInterp) = PprimeFFprime(pprime, f
 function PprimeFFprime(dd::IMAS.dd)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
     psi_norm = eq1d.psi_norm
-    pprime = DataInterpolations.CubicSpline(eq1d.dpressure_dpsi, psi_norm; extrapolate=true)
-    ffprime = DataInterpolations.CubicSpline(eq1d.f_df_dpsi, psi_norm; extrapolate=true)
+    pprime = DataInterpolations.CubicSpline(eq1d.dpressure_dpsi, psi_norm; extrapolation=ExtrapolationType.Extension)
+    ffprime = DataInterpolations.CubicSpline(eq1d.f_df_dpsi, psi_norm; extrapolation=ExtrapolationType.Extension)
     return PprimeFFprime(pprime, ffprime)
 end
 
@@ -105,14 +105,14 @@ function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
     if j_p_from === :equilibrium
         psi_norm = eq1d.psi_norm
-        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psi_norm; extrapolate=true)
-        JtoR = DataInterpolations.CubicSpline(eq1d.j_tor .* eq1d.gm9, psi_norm; extrapolate=true)
+        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psi_norm; extrapolation=ExtrapolationType.Extension)
+        JtoR = DataInterpolations.CubicSpline(eq1d.j_tor .* eq1d.gm9, psi_norm; extrapolation=ExtrapolationType.Extension)
     else
         cp1d = dd.core_profiles.profiles_1d[]
         psi_norm = cp1d.grid.psi_norm
         gm9 = IMAS.interp1d(eq1d.psi_norm, eq1d.gm9).(psi_norm)
-        pressure = DataInterpolations.CubicSpline(cp1d.pressure, psi_norm; extrapolate=true)
-        JtoR = DataInterpolations.CubicSpline(cp1d.j_tor .* gm9, psi_norm; extrapolate=true)
+        pressure = DataInterpolations.CubicSpline(cp1d.pressure, psi_norm; extrapolation=ExtrapolationType.Extension)
+        JtoR = DataInterpolations.CubicSpline(cp1d.j_tor .* gm9, psi_norm; extrapolation=ExtrapolationType.Extension)
     end
     return PressureJtoR(pressure, JtoR)
 end
@@ -130,13 +130,13 @@ function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     eq1d = dd.equilibrium.time_slice[].profiles_1d
     if j_p_from === :equilibrium
         psi_norm = eq1d.psi_norm
-        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psi_norm; extrapolate=true)
-        Jt = DataInterpolations.CubicSpline(eq1d.j_tor, psi_norm; extrapolate=true)
+        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psi_norm; extrapolation=ExtrapolationType.Extension)
+        Jt = DataInterpolations.CubicSpline(eq1d.j_tor, psi_norm; extrapolation=ExtrapolationType.Extension)
     else
         cp1d = dd.core_profiles.profiles_1d[]
         psi_norm = cp1d.grid.psi_norm
-        pressure = DataInterpolations.CubicSpline(cp1d.pressure, psi_norm; extrapolate=true)
-        Jt = DataInterpolations.CubicSpline(cp1d.j_tor , psi_norm; extrapolate=true)
+        pressure = DataInterpolations.CubicSpline(cp1d.pressure, psi_norm; extrapolation=ExtrapolationType.Extension)
+        Jt = DataInterpolations.CubicSpline(cp1d.j_tor , psi_norm; extrapolation=ExtrapolationType.Extension)
     end
     return PressureJt(pressure, Jt)
 end
@@ -286,7 +286,7 @@ end
 function ffprime(canvas::Canvas, profile::PressureJtoR, psi_norm)
     gm1 = canvas._gm1
     psin = range(0.0, 1.0, length(gm1))
-    gitp = DataInterpolations.CubicSpline(gm1, psin; extrapolate=false)
+    gitp = DataInterpolations.CubicSpline(gm1, psin; extrapolation=ExtrapolationType.None)
     return ffprime(canvas, profile, psi_norm, gitp(psi_norm))
 end
 
@@ -299,8 +299,8 @@ function ffprime(canvas::Canvas, profile::PressureJt, psi_norm)
     gm1 = canvas._gm1
     gm9 = canvas._gm9
     psin = range(0.0, 1.0, length(gm1))
-    gm1itp = DataInterpolations.CubicSpline(gm1, psin; extrapolate=false)
-    gm9itp = DataInterpolations.CubicSpline(gm9, psin; extrapolate=false)
+    gm1itp = DataInterpolations.CubicSpline(gm1, psin; extrapolation=ExtrapolationType.None)
+    gm9itp = DataInterpolations.CubicSpline(gm9, psin; extrapolation=ExtrapolationType.None)
     return ffprime(canvas, profile, psi_norm, gm1itp(psi_norm), gm9itp(psi_norm))
 end
 
@@ -365,7 +365,7 @@ function Jtor!(canvas::Canvas, profile::PressureJtoR{F, F}; update_surfaces::Boo
     Ic = trapz(psic, VJ) / (2π)
     profile.J_scale = Ip / Ic
 
-    gitp =  DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
+    gitp =  DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
 
     inv_ΔΨ = 1.0 / (Ψbnd - Ψaxis)
     pprime  = x -> DataInterpolations.derivative(profile.pressure, x) * inv_ΔΨ
@@ -394,8 +394,8 @@ function Jtor!(canvas::Canvas, profile::PressureJt{F, F}; update_surfaces::Bool)
     FRESCO.compute_FSAs!(canvas; update_surfaces)
 
     x = range(0.0, 1.0, length(Vp))
-    gm1itp =  DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
-    gm9itp =  DataInterpolations.CubicSpline(gm9, x; extrapolate=false)
+    gm1itp =  DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
+    gm9itp =  DataInterpolations.CubicSpline(gm9, x; extrapolation=ExtrapolationType.None)
 
 
     psic  = (Ψbnd - Ψaxis) .* x

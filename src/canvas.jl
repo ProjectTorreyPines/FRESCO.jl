@@ -1,6 +1,6 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:AbstractInterpolation, C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
+mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInterpolation, C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
