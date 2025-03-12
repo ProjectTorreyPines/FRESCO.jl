@@ -8,8 +8,8 @@ using VacuumFields: Green
 import IMASutils
 using IMASutils: trapz
 using StaticArrays: SVector, @SVector, @SMatrix
-import DataInterpolations, Interpolations
 import Interpolations
+import DataInterpolations: DataInterpolations, ExtrapolationType
 using PolygonOps: inpolygon, centroid
 import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
