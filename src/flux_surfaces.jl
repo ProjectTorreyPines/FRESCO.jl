@@ -126,7 +126,7 @@ function update_Vp!(canvas::Canvas)
         Vp[k] = sign_dpsi * surface.int_fluxexpansion_dl
     end
     x = psinorm(canvas)
-    canvas._Vp_itp = DataInterpolations.CubicSpline(Vp, x; extrapolate=false)
+    canvas._Vp_itp = DataInterpolations.CubicSpline(Vp, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 
@@ -138,7 +138,7 @@ function update_gm1!(canvas::Canvas)
         gm1[k] = IMAS.flux_surface_avg(f1, surface)
     end
     x = psinorm(canvas)
-    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
+    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 
@@ -150,7 +150,7 @@ function update_gm9!(canvas::Canvas)
         gm9[k] = IMAS.flux_surface_avg(f9, surface)
     end
     x = psinorm(canvas)
-    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolate=false)
+    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 
@@ -161,7 +161,7 @@ function update_Fpol!(canvas::Canvas, profile::CurrentProfile)
     Fpol .= 2 .* IMAS.cumtrapz(psi1d, FRESCO.ffprime(canvas, profile))
     Fpol .= Fpol .- Fpol[end] .+ Fbnd^2
     Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
-    canvas._Fpol_itp  =  DataInterpolations.CubicSpline(Fpol, x; extrapolate=false)
+    canvas._Fpol_itp  =  DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 

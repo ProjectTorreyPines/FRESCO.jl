@@ -257,7 +257,7 @@ function Canvas(Rs::AbstractRange{T},
     gm1 = zero(x)
     gm9 = zero(x)
     Fpol = zero(x)
-    zitp = DataInterpolations.CubicSpline(zero(x), x; extrapolate=false)
+    zitp = DataInterpolations.CubicSpline(zero(x), x; extrapolation=ExtrapolationType.None)
 
 
     r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
