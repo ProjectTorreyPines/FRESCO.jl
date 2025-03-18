@@ -122,8 +122,8 @@ end
 function update_Vp!(canvas::Canvas)
     Ip, Vp, surfaces = canvas.Ip, canvas._Vp, canvas._surfaces
     sign_dpsi = sign(Ip)
-    Threads.@threads for (k, surface) in enumerate(surfaces)
-        Vp[k] = sign_dpsi * surface.int_fluxexpansion_dl
+    Threads.@threads for k in eachindex(surfaces)
+        Vp[k] = sign_dpsi * surfaces[k].int_fluxexpansion_dl
     end
     x = psinorm(canvas)
     canvas._Vp_itp = DataInterpolations.CubicSpline(Vp, x; extrapolation=ExtrapolationType.None)
@@ -133,9 +133,9 @@ end
 gm1_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j] ^ 2
 function update_gm1!(canvas::Canvas)
     gm1, surfaces = canvas._gm1, canvas._surfaces
-    Threads.@threads for (k, surface) in enumerate(surfaces)
-        f1 = (j, xx) -> gm1_integrand(j, surface)
-        gm1[k] = IMAS.flux_surface_avg(f1, surface)
+    Threads.@threads for k in eachindex(surfaces)
+        f1 = (j, xx) -> gm1_integrand(j, surfaces[k])
+        gm1[k] = IMAS.flux_surface_avg(f1, surfaces[k])
     end
     x = psinorm(canvas)
     canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
@@ -144,21 +144,22 @@ end
 
 gm9_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j]
 function update_gm9!(canvas::Canvas)
-    gm1, surfaces = canvas._gm1, canvas._surfaces
-    Threads.@threads for (k, surface) in enumerate(surfaces)
-        f9 = (j, xx) -> gm9_integrand(j, surface)
-        gm9[k] = IMAS.flux_surface_avg(f9, surface)
+    gm9, surfaces = canvas._gm9, canvas._surfaces
+    Threads.@threads for k in eachindex(surfaces)
+        f9 = (j, xx) -> gm9_integrand(j, surfaces[k])
+        gm9[k] = IMAS.flux_surface_avg(f9, surfaces[k])
     end
     x = psinorm(canvas)
-    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
+    canvas._gm9_itp = DataInterpolations.CubicSpline(gm9, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 
 function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     Ψaxis, Ψbnd, Fbnd, Fpol = canvas.Ψaxis, canvas.Ψbnd, canvas.Fbnd, canvas._Fpol
+    x = psinorm(canvas)
     psi1d = range(Ψaxis, Ψbnd, length(x))
     # starts as F^2
-    Fpol .= 2 .* IMAS.cumtrapz(psi1d, FRESCO.ffprime(canvas, profile))
+    Fpol .= 2 .* IMAS.cumtrapz(psi1d, FRESCO.FFprime(canvas, profile))
     Fpol .= Fpol .- Fpol[end] .+ Fbnd^2
     Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
     canvas._Fpol_itp  =  DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)

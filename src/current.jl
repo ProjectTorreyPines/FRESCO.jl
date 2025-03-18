@@ -360,11 +360,12 @@ function Jtor!(canvas::Canvas, profile::PressureJtoR; update_surfaces::Bool)
     for (i,R) in enumerate(Rs)
         inv_R = 1.0 / R
         R2 = R ^ 2
-        for (j, z) in enumerate(Zs)
+        for j in eachindex(Zs)
             if is_inside[i, j]
                 psin = psinorm(Ψ[i, j], canvas)
-                pterm = twopi * (R2 - 1.0 / gm1_itp(psin)) * Pprime(psin)
-                jterm = profile.J_scale * profile.JtoR(psin) / gm1_itp(psin)
+                gm1_psin = gm1_itp(psin)
+                pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(psin)
+                jterm = profile.J_scale * profile.JtoR(psin) / gm1_psin
                 Jt[i, j] = -inv_R * (pterm - jterm)
             end
         end
@@ -394,11 +395,12 @@ function Jtor!(canvas::Canvas, profile::PressureJt; update_surfaces::Bool)
     for (i,R) in enumerate(Rs)
         inv_R = 1.0 / R
         R2 = R ^ 2
-        for (j, z) in enumerate(Zs)
+        for j in eachindex(Zs)
             if is_inside[i, j]
                 psin = psinorm(Ψ[i, j], canvas)
-                pterm = twopi * (R2 - 1.0 / gm1_itp(psin)) * Pprime(psin)
-                jterm = profile.J_scale * profile.Jt(psin) * gm9_itp(psin) / gm1_itp(psin)
+                gm1_psin = gm1_itp(psin)
+                pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(psin)
+                jterm = profile.J_scale * profile.Jt(psin) * gm9_itp(psin) / gm1_psin
                 Jt[i, j] = -inv_R * (pterm - jterm)
             end
         end
