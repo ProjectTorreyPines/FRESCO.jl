@@ -154,7 +154,7 @@ function update_gm9!(canvas::Canvas)
     return canvas
 end
 
-function update_Fpol!(canvas::Canvas, profile::CurrentProfile)
+function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     Ψaxis, Ψbnd, Fbnd, Fpol = canvas.Ψaxis, canvas.Ψbnd, canvas.Fbnd, canvas._Fpol
     psi1d = range(Ψaxis, Ψbnd, length(x))
     # starts as F^2

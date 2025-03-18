@@ -56,9 +56,9 @@ function gridded_Jtor!(canvas::Canvas)
 end
 
 # Based on https://arxiv.org/pdf/1503.03135
-abstract type CurrentProfile end
+abstract type AbstractCurrentProfile end
 
-mutable struct BetapIp{T} <: CurrentProfile
+mutable struct BetapIp{T} <: AbstractCurrentProfile
     betap::T
     alpha_m::T
     alpha_n::T
@@ -66,7 +66,7 @@ mutable struct BetapIp{T} <: CurrentProfile
     L::T
 end
 
-mutable struct PaxisIp{T} <: CurrentProfile
+mutable struct PaxisIp{T} <: AbstractCurrentProfile
     paxis::T
     alpha_m::T
     alpha_n::T
@@ -76,7 +76,7 @@ end
 
 const FuncInterp = Union{Function, DataInterpolations.AbstractInterpolation}
 
-mutable struct PprimeFFprime{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+mutable struct PprimeFFprime{F1<:FuncInterp, F2<:FuncInterp} <: AbstractCurrentProfile
     pprime::F1
     ffprime::F2
     ffp_scale::Float64
@@ -92,7 +92,7 @@ function PprimeFFprime(dd::IMAS.dd)
     return PprimeFFprime(pprime, ffprime)
 end
 
-mutable struct PressureJtoR{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+mutable struct PressureJtoR{F1<:FuncInterp, F2<:FuncInterp} <: AbstractCurrentProfile
     pressure::F1
     JtoR::F2 # <Jt / R>
     J_scale::Float64
@@ -117,7 +117,7 @@ function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     return PressureJtoR(pressure, JtoR)
 end
 
-mutable struct PressureJt{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+mutable struct PressureJt{F1<:FuncInterp, F2<:FuncInterp} <: AbstractCurrentProfile
     pressure::F1
     Jt::F2 # <Jt / R> / <1 / R>
     J_scale::Float64
@@ -141,7 +141,7 @@ function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     return PressureJt(pressure, Jt)
 end
 
-mutable struct SigmaQ{F1<:FuncInterp, F2<:FuncInterp} <: CurrentProfile
+mutable struct SigmaQ{F1<:FuncInterp, F2<:FuncInterp} <: AbstractCurrentProfile
     sigma::F1
     q::F2
 end
