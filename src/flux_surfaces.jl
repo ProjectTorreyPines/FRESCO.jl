@@ -166,6 +166,17 @@ function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     return canvas
 end
 
+# This is <|∇Ψ|^2 / R^2>, so like the gm2 metric in IMAS but for Ψ not rho_tor
+function update_gm2p!(canvas::Canvas, profile::AbstractCurrentProfile)
+    gm2p, Ψaxis, Ψbnd, Vp = canvas._gm2p, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp
+    x = psinorm(canvas)
+    fac = twopi * μ₀ * (Ψbnd - Ψaxis)
+    gm2p .= IMAS.cumtrapz(x, Vp .* JtoR(canvas, profile, x))
+    gm2p .*= fac ./ Vp
+    canvas._gm2p_itp  =  DataInterpolations.CubicSpline(gm2p, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
+
 function compute_FSAs!(canvas::Canvas, profile::PressureJtoR; update_surfaces=false, control::Symbol=:eddy)
     update_surfaces && trace_surfaces!(canvas)
 
@@ -174,6 +185,7 @@ function compute_FSAs!(canvas::Canvas, profile::PressureJtoR; update_surfaces=fa
 
     if control === :implicit_eddy
         update_Fpol!(canvas, profile)
+        update_gm2p!(canvas, profile)
     end
 
     return canvas
@@ -188,6 +200,7 @@ function compute_FSAs!(canvas::Canvas, profile::PressureJt; update_surfaces=fals
 
     if control === :implicit_eddy
         update_Fpol!(canvas, profile)
+        update_gm2p!(canvas, profile)
     end
 
     return canvas

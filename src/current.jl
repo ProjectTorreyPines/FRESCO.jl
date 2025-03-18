@@ -281,6 +281,12 @@ function FFprime(canvas::Canvas, profile::PprimeFFprime, psin=psinorm(canvas))
     profile.ffprime.(psin) .* profile.ffp_scale
 end
 
+function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin=psinorm(canvas);
+              gm1=canvas._gm1_itp.(psin))
+    return -twopi .* (profile.pprime(canvas, profile, psin) .+ 
+                      profile.ffp_scale .* profile.ffprime.(psin) .* gm1 ./ μ₀)
+end
+
 function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin=psinorm(canvas))
     return DataInterpolations.derivative.(Ref(profile.pressure), psin) ./ (canvas.Ψbnd - canvas.Ψaxis)
 end
@@ -291,10 +297,19 @@ function FFprime(canvas::Canvas, profile::PressureJtoR, psin=psinorm(canvas);
                    profile.J_scale .* profile.JtoR.(psin) ./ twopi) ./ gm1
 end
 
+function JtoR(canvas::Canvas, profile::PressureJtoR, psin=psinorm(canvas))
+    return profile.J_scale .* profile.JtoR.(psin)
+end
+
 function FFprime(canvas::Canvas, profile::PressureJt, psin=psinorm(canvas);
                  gm1=canvas._gm1_itp.(psin), gm9=canvas._gm9_itp.(psin))
     return -μ₀ .* (Pprime.(Ref(canvas), Ref(profile), psin) .+
                    profile.J_scale .* profile.Jt.(psin) .* gm9 ./ twopi) ./ gm1
+end
+
+function JtoR(canvas::Canvas, profile::PressureJt, psin=psinorm(canvas);
+              gm9=canvas._gm9_itp.(psin))
+    return profile.J_scale .* profile.Jt.(psin) .* gm9
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime; kwargs...)
