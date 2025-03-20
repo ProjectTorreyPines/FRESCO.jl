@@ -85,10 +85,10 @@ end
 PprimeFFprime(pprime::FuncInterp, ffprime::FuncInterp) = PprimeFFprime(pprime, ffprime, 1.0)
 
 function PprimeFFprime(dd::IMAS.dd)
-    eq1d = dd.equilibrium.time_slice[].profiles_1d
-    psin = eq1d.psi_norm
-    pprime = DataInterpolations.CubicSpline(eq1d.dpressure_dpsi, psin; extrapolation=ExtrapolationType.Extension)
-    ffprime = DataInterpolations.CubicSpline(eq1d.f_df_dpsi, psin; extrapolation=ExtrapolationType.Extension)
+    eqt1d = dd.equilibrium.time_slice[].profiles_1d
+    psin = eqt1d.psi_norm
+    pprime = DataInterpolations.CubicSpline(eqt1d.dpressure_dpsi, psin; extrapolation=ExtrapolationType.Extension)
+    ffprime = DataInterpolations.CubicSpline(eqt1d.f_df_dpsi, psin; extrapolation=ExtrapolationType.Extension)
     return PprimeFFprime(pprime, ffprime)
 end
 
@@ -102,15 +102,15 @@ PressureJtoR(pressure::FuncInterp, JtoR::FuncInterp) = PressureJtoR(pressure, Jt
 
 function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     @assert j_p_from in (:equilibrium, :core_profiles)
-    eq1d = dd.equilibrium.time_slice[].profiles_1d
+    eqt1d = dd.equilibrium.time_slice[].profiles_1d
     if j_p_from === :equilibrium
-        psin = eq1d.psi_norm
-        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psin; extrapolation=ExtrapolationType.Extension)
-        JtoR = DataInterpolations.CubicSpline(eq1d.j_tor .* eq1d.gm9, psin; extrapolation=ExtrapolationType.Extension)
+        psin = eqt1d.psi_norm
+        pressure = DataInterpolations.CubicSpline(eqt1d.pressure, psin; extrapolation=ExtrapolationType.Extension)
+        JtoR = DataInterpolations.CubicSpline(eqt1d.j_tor .* eqt1d.gm9, psin; extrapolation=ExtrapolationType.Extension)
     else
         cp1d = dd.core_profiles.profiles_1d[]
         psin = cp1d.grid.psi_norm
-        gm9 = IMAS.interp1d(eq1d.psi_norm, eq1d.gm9).(psin)
+        gm9 = IMAS.interp1d(eqt1d.psi_norm, eqt1d.gm9).(psin)
         pressure = DataInterpolations.CubicSpline(cp1d.pressure, psin; extrapolation=ExtrapolationType.Extension)
         JtoR = DataInterpolations.CubicSpline(cp1d.j_tor .* gm9, psin; extrapolation=ExtrapolationType.Extension)
     end
@@ -127,11 +127,11 @@ PressureJt(pressure::FuncInterp, Jt::FuncInterp) = PressureJt(pressure, Jt, 1.0)
 
 function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium)
     @assert j_p_from in (:equilibrium, :core_profiles)
-    eq1d = dd.equilibrium.time_slice[].profiles_1d
+    eqt1d = dd.equilibrium.time_slice[].profiles_1d
     if j_p_from === :equilibrium
-        psin = eq1d.psi_norm
-        pressure = DataInterpolations.CubicSpline(eq1d.pressure, psin; extrapolation=ExtrapolationType.Extension)
-        Jt = DataInterpolations.CubicSpline(eq1d.j_tor, psin; extrapolation=ExtrapolationType.Extension)
+        psin = eqt1d.psi_norm
+        pressure = DataInterpolations.CubicSpline(eqt1d.pressure, psin; extrapolation=ExtrapolationType.Extension)
+        Jt = DataInterpolations.CubicSpline(eqt1d.j_tor, psin; extrapolation=ExtrapolationType.Extension)
     else
         cp1d = dd.core_profiles.profiles_1d[]
         psin = cp1d.grid.psi_norm

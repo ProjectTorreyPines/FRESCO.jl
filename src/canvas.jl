@@ -66,6 +66,7 @@ end
 
 function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
                 load_pf_active::Bool=true, load_pf_passive::Bool=true,
+                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
@@ -82,7 +83,10 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
         Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
-    canvas = Canvas(dd, Rs, Zs, Ψ; load_pf_active, load_pf_passive, Green_table)
+    canvas = Canvas(dd, Rs, Zs, Ψ; 
+                    load_pf_active, load_pf_passive, 
+                    x_points_weight, strike_points_weight,
+                    Green_table)
 
     update_bounds!(canvas)
     trace_surfaces!(canvas)
@@ -94,6 +98,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
                 coils=nothing, load_pf_active=true, load_pf_passive=true,
                 x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
+                active_x_points::AbstractVector{Int}=Int[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
@@ -119,6 +124,11 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     # Saddle control points
     saddle_weight = x_points_weight / length(eqt.boundary.x_point)
     saddle_cps = VacuumFields.SaddleControlPoint{T}[VacuumFields.SaddleControlPoint{T}(x_point.r, x_point.z, saddle_weight) for x_point in eqt.boundary.x_point]
+    xiso_cps = Vector{VacuumFields.IsoControlPoint{T}}(undef, length(active_x_points))
+    for (k, ax) in enumerate(active_x_points)
+        xiso_cps[k] = VacuumFields.IsoControlPoint{T}(eqt.boundary.x_point[ax].r, eqt.boundary.x_point[ax].z, iso_cps[1].R2, iso_cps[1].Z2, saddle_weight)
+    end
+    append!(iso_cps, xiso_cps)
 
     # define coils
     fixed_coils = Int[]

@@ -1,3 +1,4 @@
+using Printf
 function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
                 Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
                 Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
@@ -28,7 +29,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         set_flux_at_coils!(canvas)
     end
 
-    sum(debug) > 0 && println("\t\tΨaxis\t\t\tΔΨ\t\t\tError")
+    sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
     converged = false
     error_outer = 0.0
     update_surfaces = profile isa Union{PressureJtoR, PressureJt}
@@ -71,7 +72,10 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         Jtor!(canvas, profile; update_surfaces)
 
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
-        sum(debug) > 0 && println("Iteration $(j):\t$(canvas.Ψaxis)\t$(canvas.Ψbnd - canvas.Ψaxis)\t$(error_outer)")
+        if sum(debug) > 0
+            @printf("Iteration %d:\t%.8f\t%.8f\t%e\n", j, canvas.Ψaxis, canvas.Ψbnd - canvas.Ψaxis, error_outer)
+            flush(stdout)
+        end
         sum(debug) == 2 && display(plot(canvas))
         if error_outer < tolerance
             converged = true
