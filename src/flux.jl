@@ -1,5 +1,3 @@
-coil_flux(r, z, canvas::Canvas) = sum(VacuumFields.current(coil) != 0.0 ? VacuumFields.ψ(coil, r, z) : 0.0 for coil in canvas.coils)
-
 function sync_Ψ!(canvas::Canvas; update_vacuum::Bool=false, update_Ψitp::Bool=true)
     update_vacuum && set_Ψvac!(canvas)
     @. canvas.Ψ = canvas._Ψpl + canvas._Ψvac
@@ -42,29 +40,6 @@ end
 function invert_GS!(canvas::Canvas, Jtor::Union{Nothing,Function})
     set_boundary_flux!(canvas, Jtor)
     return invert_GS!(canvas)
-end
-
-# Compute flux at (x, y) outside of plasma using von Hagenow boundary integral
-function flux(x::Real, y::Real, canvas::Canvas)
-    Rs, Zs = canvas.Rs, canvas.Zs
-    @assert (x < Rs[1]) || (x > Rs[end]) || (y < Zs[1]) || (y > Zs[end])
-    U = canvas._U
-
-    dr, dz = step(Rs), step(Zs)
-
-    Rl, Rr = Rs[1], Rs[end]
-    inv_Rl, inv_Rr = 1.0 / Rl, 1.0 / Rr
-    Zb, Zt = Zs[1], Zs[end]
-
-    horizontal_integrand = i -> ((U[i, 3] - 4 * U[i, 2]) * Green(x, y, Rs[i], Zb) +
-                                 (U[i, end-2] - 4 * U[i, end-1]) * Green(x, y, Rs[i], Zt)) / Rs[i]
-    psi = (0.5 * dr / dz) * sum(horizontal_integrand(i) for i in eachindex(Rs)[2:end-1])
-
-    vertical_integrand = j -> ((U[end-2, j] - 4 * U[end-1, j]) * Green(x, y, Rr, Zs[j]) * inv_Rr +
-                               (U[3, j] - 4 * U[2, j]) * Green(x, y, Rl, Zs[j]) * inv_Rl)
-    psi += (0.5 * dz / dr) * sum(vertical_integrand(j) for j in eachindex(Zs)[2:end-1])
-
-    return psi
 end
 
 # Approximate integral from k-1 to k+1 along boundary bnd
@@ -111,10 +86,10 @@ function flux(k::Int, bnd::Symbol, canvas::Canvas)
     inv_Rl, inv_Rr = 1.0 / Rl, 1.0 / Rr
     Zb, Zt = Zs[1], Zs[end]
 
-    left_integrand = j -> (bnd === :left && j == k) ? 0.0 : (U[3, j] - 4 * U[2, j]) * Green(x, y, Rl, Zs[j]) * inv_Rl
-    right_integrand = j -> (bnd === :right && j == k) ? 0.0 : (U[end-2, j] - 4 * U[end-1, j]) * Green(x, y, Rr, Zs[j]) * inv_Rr
-    bottom_integrand = i -> (bnd === :bottom && i == k) ? 0.0 : (U[i, 3] - 4 * U[i, 2]) * Green(x, y, Rs[i], Zb) / Rs[i]
-    top_integrand = i -> (bnd === :top && i == k) ? 0.0 : (U[i, end-2] - 4 * U[i, end-1]) * Green(x, y, Rs[i], Zt) / Rs[i]
+    left_integrand = j -> (bnd === :left && j == k) ? 0.0 : (U[3, j] - 4 * U[2, j]) * VacuumFields.Green(x, y, Rl, Zs[j]) * inv_Rl
+    right_integrand = j -> (bnd === :right && j == k) ? 0.0 : (U[end-2, j] - 4 * U[end-1, j]) * VacuumFields.Green(x, y, Rr, Zs[j]) * inv_Rr
+    bottom_integrand = i -> (bnd === :bottom && i == k) ? 0.0 : (U[i, 3] - 4 * U[i, 2]) * VacuumFields.Green(x, y, Rs[i], Zb) / Rs[i]
+    top_integrand = i -> (bnd === :top && i == k) ? 0.0 : (U[i, end-2] - 4 * U[i, end-1]) * VacuumFields.Green(x, y, Rs[i], Zt) / Rs[i]
 
     psi = (0.5 * dz / dr) * sum(left_integrand(j) + right_integrand(j) for j in eachindex(Zs)[2:end-1])
     psi += (0.5 * dr / dz) * sum(top_integrand(i) + bottom_integrand(i) for i in eachindex(Rs)[2:end-1])
@@ -211,86 +186,86 @@ end
 ##################
 # Plasma flux
 ##################
+
+
+coil_flux(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.ψ, canvas, x, y)
+coil_dψdR(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.dψ_dR, canvas, x, y)
+coil_dψdZ(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.dψ_dZ, canvas, x, y)
+_cfunc(Pfunc::Function, canvas::Canvas, x::Real, y::Real) = sum(VacuumFields.current(coil) != 0.0 ? Pfunc(coil, x, y) : 0.0 for coil in canvas.coils)
+
 function in_domain(r::Real, z::Real, canvas::Canvas)
     Rs, Zs = canvas.Rs, canvas.Zs
     return (r >= Rs[1]) && (r <= Rs[end]) && (z >= Zs[1]) && (z <= Zs[end])
 end
 
-# Compute flux at (x, y) using von Hagenow boundary integral if outside plasma
-function plasma_internal_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::Interpolations.AbstractInterpolation)
-    return Ψpl_itp(x, y)
-end
-
-function plasma_internal_flux(x::Real, y::Real, canvas::Canvas, blank::Nothing)
-    Ψpl_itp = ψ_interpolant(canvas.Rs, canvas.Zs, canvas._Ψpl)
-    return Ψpl_itp(x, y)
-end
-
-function plasma_flux(x::Real, y::Real, canvas::Canvas, Ψpl_itp::Union{Nothing,Interpolations.AbstractInterpolation}=nothing)
+plasma_flux_external(canvas::Canvas, x::Real, y::Real) = _pfunc(VacuumFields.Green, canvas, x, y)
+plasma_dψdR_external(canvas::Canvas, x::Real, y::Real) = _pfunc(VacuumFields.dG_dR, canvas, x, y)
+plasma_dψdZ_external(canvas::Canvas, x::Real, y::Real) = _pfunc(VacuumFields.dG_dZ, canvas, x, y)
+function _pfunc(Gfunc, canvas::Canvas, x::Real, y::Real)
+    # von Hagenow method
     Rs, Zs = canvas.Rs, canvas.Zs
+
+    U = canvas._U
+
+    dr, dz = step(Rs), step(Zs)
+
+    Rl, Rr = Rs[1], Rs[end]
+    inv_Rl, inv_Rr = 1.0 / Rl, 1.0 / Rr
+    Zb, Zt = Zs[1], Zs[end]
+
+    horizontal_integrand = i -> ((U[i, 3] - 4 * U[i, 2]) * Gfunc(Rs[i], Zb, x, y) +
+                                (U[i, end-2] - 4 * U[i, end-1]) * Gfunc(Rs[i], Zt, x, y)) / Rs[i]
+    psi = (0.5 * dr / dz) * sum(horizontal_integrand(i) for i in eachindex(Rs)[2:end-1])
+
+    vertical_integrand = j -> ((U[end-2, j] - 4 * U[end-1, j]) * Gfunc(Rr, Zs[j], x, y) * inv_Rr +
+                            (U[3, j] - 4 * U[2, j]) * Gfunc(Rl, Zs[j], x, y) * inv_Rl)
+    psi += (0.5 * dz / dr) * sum(vertical_integrand(j) for j in eachindex(Zs)[2:end-1])
+
+    return psi
+end
+
+function plasma_flux(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
+    return in_domain(x, y, canvas) ? canvas._Ψitp(x, y) - coil_flux(canvas, x, y) : plasma_flux_external(canvas, x, y)
+end
+function plasma_flux(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
+    return in_domain(x, y, canvas) ? Ψpl_itp(x, y) : plasma_flux_external(canvas, x, y)
+end
+
+function plasma_dψdR(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
+    ∇ = Interpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, x, y)[1] - coil_dψdR(canvas, x, y) : plasma_dψdR_external(canvas, x, y)
+end
+function plasma_dψdR(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
+    ∇ = Interpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, x, y)[1] : plasma_dψdR_external(canvas, x, y)
+end
+
+function plasma_dψdZ(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
+    ∇ = Interpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, x, y)[2] - coil_dψdZ(canvas, x, y) : plasma_dψdZ_external(canvas, x, y)
+end
+function plasma_dψdZ(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
+    ∇ = Interpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, x, y)[2] : plasma_dψdZ_external(canvas, x, y)
+end
+
+function flux(canvas::Canvas, x::Real, y::Real; update_Ψitp::Bool=true)
+
     if in_domain(x, y, canvas)
-        return plasma_internal_flux(x, y, canvas, Ψpl_itp)
+        update_Ψitp && update_interpolation!(canvas)
+        return canvas._Ψitp(x, y)
     else
-        # von Hagenow
-        U = canvas._U
-
-        dr, dz = step(Rs), step(Zs)
-
-        Rl, Rr = Rs[1], Rs[end]
-        inv_Rl, inv_Rr = 1.0 / Rl, 1.0 / Rr
-        Zb, Zt = Zs[1], Zs[end]
-
-        horizontal_integrand = i -> ((U[i, 3] - 4 * U[i, 2]) * Green(x, y, Rs[i], Zb) +
-                                     (U[i, end-2] - 4 * U[i, end-1]) * Green(x, y, Rs[i], Zt)) / Rs[i]
-        psi = (0.5 * dr / dz) * sum(horizontal_integrand(i) for i in eachindex(Rs)[2:end-1])
-
-        vertical_integrand = j -> ((U[end-2, j] - 4 * U[end-1, j]) * Green(x, y, Rr, Zs[j]) * inv_Rr +
-                                   (U[3, j] - 4 * U[2, j]) * Green(x, y, Rl, Zs[j]) * inv_Rl)
-        psi += (0.5 * dz / dr) * sum(vertical_integrand(j) for j in eachindex(Zs)[2:end-1])
-
-        return psi
+        return plasma_flux_external(canvas, x, y) + coil_flux(canvas, x, y)
     end
 end
 
 # compute flux at (x, y) using 2D surface integral over plasma current
-function plasma_flux_2D(x::Real, y::Real, canvas::Canvas)
+# For diagnostics only
+function plasma_flux_2D(canvas::Canvas, x::Real, y::Real)
     Rs, Zs, Jt = canvas.Rs, canvas.Zs, canvas._Jt
     coeff = step(Rs) * step(Zs) * twopi * μ₀
-    f = (i, j) -> (Jt[i, j] == 0.0) ? 0.0 : Green(x, y, Rs[i], Zs[j]) * Jt[i, j]
+    f = (i, j) -> (Jt[i, j] == 0.0) ? 0.0 : VacuumFields.Green(x, y, Rs[i], Zs[j]) * Jt[i, j]
     return coeff * sum(f(i, j) for j in eachindex(Zs)[2:end-1], i in eachindex(Rs)[2:end-1])
-end
-
-
-function plasma_flux_at_coil(coil::VacuumFields.PointCoil, pflux::F1) where {F1 <: Function}
-    return VacuumFields.turns(coil) * pflux(coil.R, coil.Z)
-end
-
-function plasma_flux_at_coil(coil::VacuumFields.DistributedCoil, pflux::F1) where {F1 <: Function}
-    return VacuumFields.turns(coil) * sum(pflux(coil.R[k], coil.Z[k]) for k in eachindex(coil.R)) / length(coil.R)
-end
-
-function plasma_flux_at_coil(coil::Union{VacuumFields.ParallelogramCoil,VacuumFields.QuadCoil,VacuumFields.IMASelement},
-                             pflux::F1; xorder::Int=3, yorder::Int=3) where {F1 <: Function}
-    return VacuumFields.turns(coil) * VacuumFields.integrate(pflux, coil; xorder, yorder) / VacuumFields.area(coil)
-end
-
-function plasma_flux_at_coil(mcoil::VacuumFields.MultiCoil, pflux::F1; kwargs...) where {F1 <: Function}
-    flux = plasma_flux_at_coil(mcoil.coils[1], pflux; kwargs...)
-    for k in eachindex(mcoil.coils)[2:end]
-        flux += plasma_flux_at_coil(mcoil.coils[k], pflux; kwargs...)
-    end
-    return flux
-    #return sum(plasma_flux_at_coil(coil, pflux; kwargs...) for coil in mcoil.coils)
-end
-
-function plasma_flux_at_coil(coil::VacuumFields.IMAScoil, pflux::F1; xorder::Int=3, yorder::Int=3) where {F1 <: Function}
-    elements = VacuumFields.elements(coil)
-    flux = plasma_flux_at_coil(elements[1], pflux; xorder, yorder)
-    for k in eachindex(elements)[2:end]
-        flux += plasma_flux_at_coil(elements[k], pflux; xorder, yorder)
-    end
-    return flux
-    #return sum(plasma_flux_at_coil(element, pflux; xorder, yorder) for element in VacuumFields.elements(coil))
 end
 
 function plasma_flux_at_coil(k::Int, canvas::Canvas)
