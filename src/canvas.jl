@@ -74,8 +74,8 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
         Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
-    canvas = Canvas(dd, Rs, Zs, Ψ; 
-                    load_pf_active, load_pf_passive, 
+    canvas = Canvas(dd, Rs, Zs, Ψ;
+                    load_pf_active, load_pf_passive,
                     x_points_weight, strike_points_weight,
                     Green_table)
 
@@ -298,7 +298,7 @@ function compute_Gbnd(Rs::AbstractRange{T}, Zs::AbstractRange{T}) where {T<:Real
             if k == l
                 G[k, l] = 0.0
             else
-                G[l, k] = Green(X[l], Y[l], X[k], Y[k])
+                G[l, k] = VacuumFields.Green(X[l], Y[l], X[k], Y[k])
                 G[k, l] = G[l, k]
             end
         end
