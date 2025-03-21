@@ -4,7 +4,6 @@ module FRESCO
 using LinearAlgebra
 import IMAS
 import VacuumFields
-using VacuumFields: Green
 import IMASutils
 using IMASutils: trapz
 using StaticArrays: SVector, @SVector, @SMatrix
@@ -28,7 +27,7 @@ include("feedback.jl")
 include("workflow.jl")
 
 export Canvas
-export flux, psinorm
+export psinorm
 export invert_GS!, invert_GS_zero_bnd!
 export initial_current
 export solve!
