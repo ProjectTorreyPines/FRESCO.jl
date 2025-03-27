@@ -159,11 +159,30 @@ function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     x = psinorm(canvas)
     psi1d = range(Ψaxis, Ψbnd, length(x))
     # starts as F^2
-    Fpol .= 2 .* IMAS.cumtrapz(psi1d, FRESCO.FFprime(canvas, profile))
-    Fpol .= Fpol .- Fpol[end] .+ Fbnd^2
+    IMAS.cumtrapz!(Fpol, psi1d, FRESCO.FFprime(canvas, profile))
+    Fpol .= 2 .* Fpol .- Fpol[end] .+ Fbnd^2
     Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
     canvas._Fpol_itp  =  DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)
     return canvas
+end
+
+function update_rho!(canvas::Canvas)
+
+    rho, Ψaxis, Ψbnd, Vp, gm1, Fpol = canvas._rho, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp, canvas._gm1, canvas._Fpol
+    x = psinorm(canvas)
+    psi1d = range(Ψaxis, Ψbnd, length(x))
+
+    # compute toroidal flux
+    #   Φ = ∫dΨ F * dV/dΨ * <R⁻²> / 2π
+    # we ignore the 2π because we'll normalize anyway
+    IMAS.cumtrapz!(rho, psi1d, Fpol .* Vp .* gm1)
+
+    # then turn into rho_tor_norm
+    rho .= sqrt.(rho ./ rho[end])
+    rho[1] = 0.0
+    rho[end] = 1.0
+
+    canvas._rho_itp =  DataInterpolations.CubicSpline(rho, x; extrapolation=ExtrapolationType.None)
 end
 
 # This is <|∇Ψ|^2 / R^2>, so like the gm2 metric in IMAS but for Ψ not rho_tor
@@ -171,37 +190,26 @@ function update_gm2p!(canvas::Canvas, profile::AbstractCurrentProfile)
     gm2p, Ψaxis, Ψbnd, Vp = canvas._gm2p, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp
     x = psinorm(canvas)
     fac = twopi * μ₀ * (Ψbnd - Ψaxis)
-    gm2p .= IMAS.cumtrapz(x, Vp .* JtoR(canvas, profile, x))
+    IMAS.cumtrapz!(gm2p, x, Vp .* JtoR(canvas, profile, x))
     gm2p .*= fac ./ Vp
     canvas._gm2p_itp  =  DataInterpolations.CubicSpline(gm2p, x; extrapolation=ExtrapolationType.None)
     return canvas
 end
 
-function compute_FSAs!(canvas::Canvas, profile::PressureJtoR; update_surfaces=false, control::Symbol=:eddy)
+function _update_common_fsas!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces=false, control::Symbol=:eddy)
     update_surfaces && trace_surfaces!(canvas)
-
     update_Vp!(canvas)
     update_gm1!(canvas)
-
-    if control === :implicit_eddy
-        update_Fpol!(canvas, profile)
-        update_gm2p!(canvas, profile)
-    end
-
+    update_Fpol!(canvas, profile)
+    update_rho!(canvas)
+    (control === :implicit_eddy) && update_gm2p!(canvas, profile)
     return canvas
 end
 
+compute_FSAs!(canvas::Canvas, profile::PressureJtoR; update_surfaces=false, control::Symbol=:eddy) =  _update_common_fsas!(canvas, profile; update_surfaces, control)
+
 function compute_FSAs!(canvas::Canvas, profile::PressureJt; update_surfaces=false, control::Symbol=:eddy)
-    update_surfaces && trace_surfaces!(canvas)
-
-    update_Vp!(canvas)
-    update_gm1!(canvas)
+    _update_common_fsas!(canvas, profile; update_surfaces, control)
     update_gm9!(canvas)
-
-    if control === :implicit_eddy
-        update_Fpol!(canvas, profile)
-        update_gm2p!(canvas, profile)
-    end
-
     return canvas
 end
