@@ -1,6 +1,5 @@
 using Printf
-
-function solve!(canvas::Canvas, profile::CurrentProfile, Nout::Int, Nin::Int;
+function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
                 Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
                 Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
                 debug=0,

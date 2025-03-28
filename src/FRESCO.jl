@@ -19,10 +19,10 @@ const μ₀ = π * 4e-7
 const twopi = 2π
 
 include("canvas.jl")
+include("current.jl")
 include("flux.jl")
 include("flux_surfaces.jl")
 include("GSsolve.jl")
-include("current.jl")
 include("feedback.jl")
 include("workflow.jl")
 

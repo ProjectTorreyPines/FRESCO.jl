@@ -39,6 +39,7 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
 end
 
 psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
+psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas._surfaces))
 
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd
@@ -118,25 +119,97 @@ function trace_surfaces!(canvas::Canvas)
     return IMAS.trace_simple_surfaces!(surfaces, psi_levels, Rs, Zs, Ψ, Ψitp, Raxis, Zaxis, Rw, Zw, r_cache, z_cache)
 end
 
-function compute_FSAs!(canvas::Canvas; update_surfaces=false)
-    update_surfaces && trace_surfaces!(canvas)
-    surfaces, Vp, gm1, gm9 = canvas._surfaces, canvas._Vp, canvas._gm1, canvas._gm9
-
-    sign_dpsi = (canvas.Ip >= 0.0) ? 1 : -1
-
-    for (k, surface) in enumerate(surfaces)
-
-        # Vp = dvolume_dpsi
-        Vp[k] = sign_dpsi * surface.int_fluxexpansion_dl
-
-        # gm1 = <1/R^2>
-        f1 = (j, xx) ->  surface.fluxexpansion[j] / surface.r[j] ^ 2
-        gm1[k] = IMAS.flux_surface_avg(f1, surface)
-
-        # gm9 = <1/R>
-        f9 = (j, xx) ->  surface.fluxexpansion[j] / surface.r[j]
-        gm9[k] = IMAS.flux_surface_avg(f9, surface)
+function update_Vp!(canvas::Canvas)
+    Ip, Vp, surfaces = canvas.Ip, canvas._Vp, canvas._surfaces
+    sign_dpsi = sign(Ip)
+    Threads.@threads for k in eachindex(surfaces)
+        Vp[k] = sign_dpsi * surfaces[k].int_fluxexpansion_dl
     end
+    x = psinorm(canvas)
+    canvas._Vp_itp = DataInterpolations.CubicSpline(Vp, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
 
-    return Vp, gm1, gm9
+gm1_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j] ^ 2
+function update_gm1!(canvas::Canvas)
+    gm1, surfaces = canvas._gm1, canvas._surfaces
+    Threads.@threads for k in eachindex(surfaces)
+        f1 = (j, xx) -> gm1_integrand(j, surfaces[k])
+        gm1[k] = IMAS.flux_surface_avg(f1, surfaces[k])
+    end
+    x = psinorm(canvas)
+    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
+
+gm9_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j]
+function update_gm9!(canvas::Canvas)
+    gm9, surfaces = canvas._gm9, canvas._surfaces
+    Threads.@threads for k in eachindex(surfaces)
+        f9 = (j, xx) -> gm9_integrand(j, surfaces[k])
+        gm9[k] = IMAS.flux_surface_avg(f9, surfaces[k])
+    end
+    x = psinorm(canvas)
+    canvas._gm9_itp = DataInterpolations.CubicSpline(gm9, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
+
+function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
+    Ψaxis, Ψbnd, Fbnd, Fpol = canvas.Ψaxis, canvas.Ψbnd, canvas.Fbnd, canvas._Fpol
+    x = psinorm(canvas)
+    psi1d = range(Ψaxis, Ψbnd, length(x))
+    # starts as F^2
+    IMAS.cumtrapz!(Fpol, psi1d, FRESCO.FFprime(canvas, profile))
+    Fpol .= 2 .* Fpol .- Fpol[end] .+ Fbnd^2
+    Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
+    canvas._Fpol_itp  =  DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
+
+function update_rho!(canvas::Canvas)
+
+    rho, Ψaxis, Ψbnd, Vp, gm1, Fpol = canvas._rho, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp, canvas._gm1, canvas._Fpol
+    x = psinorm(canvas)
+    psi1d = range(Ψaxis, Ψbnd, length(x))
+
+    # compute toroidal flux
+    #   Φ = ∫dΨ F * dV/dΨ * <R⁻²> / 2π
+    # we ignore the 2π because we'll normalize anyway
+    IMAS.cumtrapz!(rho, psi1d, Fpol .* Vp .* gm1)
+
+    # then turn into rho_tor_norm
+    rho .= sqrt.(rho ./ rho[end])
+    rho[1] = 0.0
+    rho[end] = 1.0
+
+    canvas._rho_itp =  DataInterpolations.CubicSpline(rho, x; extrapolation=ExtrapolationType.None)
+end
+
+# This is <|∇Ψ|^2 / R^2>, so like the gm2 metric in IMAS but for Ψ not rho_tor
+function update_gm2p!(canvas::Canvas, profile::AbstractCurrentProfile)
+    gm2p, Ψaxis, Ψbnd, Vp = canvas._gm2p, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp
+    x = psinorm(canvas)
+    fac = twopi * μ₀ * (Ψbnd - Ψaxis)
+    IMAS.cumtrapz!(gm2p, x, Vp .* JtoR(canvas, profile, x))
+    gm2p .*= fac ./ Vp
+    canvas._gm2p_itp  =  DataInterpolations.CubicSpline(gm2p, x; extrapolation=ExtrapolationType.None)
+    return canvas
+end
+
+function _update_common_fsas!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces=false, control::Symbol=:eddy)
+    update_surfaces && trace_surfaces!(canvas)
+    update_Vp!(canvas)
+    update_gm1!(canvas)
+    update_Fpol!(canvas, profile)
+    update_rho!(canvas)
+    (control === :implicit_eddy) && update_gm2p!(canvas, profile)
+    return canvas
+end
+
+compute_FSAs!(canvas::Canvas, profile::PressureJtoR; update_surfaces=false, control::Symbol=:eddy) =  _update_common_fsas!(canvas, profile; update_surfaces, control)
+
+function compute_FSAs!(canvas::Canvas, profile::PressureJt; update_surfaces=false, control::Symbol=:eddy)
+    _update_common_fsas!(canvas, profile; update_surfaces, control)
+    update_gm9!(canvas)
+    return canvas
 end

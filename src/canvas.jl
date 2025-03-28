@@ -1,10 +1,12 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInterpolation, C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
+mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
+                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T}
     Ip::T
+    Fbnd::T
     coils::VC
     Rw::Vector{T}
     Zw::Vector{T}
@@ -18,7 +20,7 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
     _Gbnd::Matrix{T}
     _U::Matrix{T}
     _Jt::Matrix{T}
-    _Ψitp::I
+    _Ψitp::II
     _bnd::Vector{SVector{2, T}}
     _rextrema::Tuple{T,T}
     _zextrema::Tuple{T,T}
@@ -49,8 +51,17 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, I<:Interpolations.AbstractInt
     _tmp_Ψ::Matrix{T}
     _surfaces::Vector{IMAS.SimpleSurface{T}}
     _Vp::Vector{T}
+    _Vp_itp::DI
     _gm1::Vector{T}
+    _gm1_itp::DI
+    _gm2p::Vector{T}
+    _gm2p_itp::DI
     _gm9::Vector{T}
+    _gm9_itp::DI
+    _Fpol::Vector{T}
+    _Fpol_itp::DI
+    _rho::Vector{T}
+    _rho_itp::DI
     _r_cache::Vector{T}
     _z_cache::Vector{T}
 end
@@ -140,13 +151,14 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
         end
     end
 
-    # define current
+    # define current and F at boundary
     Ip = eqt.global_quantities.ip
+    Fbnd = eqt.global_quantities.vacuum_toroidal_field.b0 * eqt.global_quantities.vacuum_toroidal_field.r0
 
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -157,6 +169,7 @@ end
 function Canvas(Rs::AbstractRange{T},
                 Zs::AbstractRange{T},
                 Ip::T,
+                Fbnd::T,
                 coils::CoilVectorType,
                 Rw::Vector{T},
                 Zw::Vector{T},
@@ -170,13 +183,14 @@ function Canvas(Rs::AbstractRange{T},
     Nr, Nz = length(Rs), length(Zs)
     Ψ = zeros(T, Nr, Nz)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw,  Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
 end
 
 function Canvas(Rs::AbstractRange{T},
                 Zs::AbstractRange{T},
                 Ψ::Matrix{T},
                 Ip::T,
+                Fbnd::T,
                 coils::CoilVectorType,
                 Rw::Vector{T},
                 Zw::Vector{T},
@@ -252,15 +266,24 @@ function Canvas(Rs::AbstractRange{T},
     S = zero(Ψ)
     tmp_Ψ = zero(Ψ)
     zt = zero(T)
-    Vp  = zeros(length(surfaces))
-    gm1 = zeros(length(surfaces))
-    gm9 = zeros(length(surfaces))
+    x = range(0, 1, length(surfaces))
+    Vp  = zero(x)
+    gm1 = zero(x)
+    gm2p = zero(x)
+    gm9 = zero(x)
+    Fpol = zero(x)
+    rho = zero(x)
+    zitp = DataInterpolations.CubicSpline(zero(x), x; extrapolation=ExtrapolationType.None)
+
+
     r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
+    return Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
                   SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
                   iso_cps, flux_cps, saddle_cps,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
-                  A, B, M, LU, S, tmp_Ψ, surfaces, Vp, gm1, gm9, r_cache, z_cache)
+                  A, B, M, LU, S, tmp_Ψ,
+                  surfaces, Vp, deepcopy(zitp), gm1, deepcopy(zitp), gm2p, deepcopy(zitp),
+                  gm9, deepcopy(zitp), Fpol, deepcopy(zitp), rho, deepcopy(zitp), r_cache, z_cache)
 end
 
 function bnd2mat(Nr::Int, Nz::Int, k::Int)
