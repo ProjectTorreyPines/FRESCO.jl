@@ -271,34 +271,58 @@ function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin=psinorm(canv
     return -twopi .* (Pprime.(Ref(canvas), Ref(profile), psin) .+ FFprime.(Ref(canvas), Ref(profile), psin) .* gm1 ./ μ₀)
 end
 
-function Jtor!(canvas::Canvas, profile::PprimeFFprime; kwargs...)
+function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, compute_Ip_from::Symbol)
     Rs, Zs, Ψ, Ip, Jt, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Jt, canvas._is_inside
     Jt .= 0.0
 
-    # compute the FF' contribution to Ip
-    for (i,R) in enumerate(Rs)
-        for j in eachindex(Zs)
-            if is_inside[i, j]
-                psin = psinorm(Ψ[i, j], canvas)
-                Jt[i, j] = -twopi * FFprime(canvas, profile, psin) / (R * μ₀)
-            end
-        end
-    end
-    If_c = sum(Jt) * step(Rs) * step(Zs)
+    @assert compute_Ip_from in (:grid, :fsa)
 
-    # compute total Ip without scaling
-    for (i,R) in enumerate(Rs)
-        for j in eachindex(Zs)
-            if is_inside[i, j]
-                psin = psinorm(Ψ[i, j], canvas)
-                Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin)
+    if compute_Ip_from === :grid
+        # compute the FF' contribution to Ip
+        for (i,R) in enumerate(Rs)
+            for j in eachindex(Zs)
+                if is_inside[i, j]
+                    psin = psinorm(Ψ[i, j], canvas)
+                    Jt[i, j] = -twopi * FFprime(canvas, profile, psin) / (R * μ₀)
+                end
             end
         end
+        If_c = sum(Jt) * step(Rs) * step(Zs)
+
+        # compute total Ip
+        for (i,R) in enumerate(Rs)
+            for j in eachindex(Zs)
+                if is_inside[i, j]
+                    psin = psinorm(Ψ[i, j], canvas)
+                    Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin)
+                end
+            end
+        end
+        Ic = sum(Jt) * step(Rs) * step(Zs)
+
+    elseif compute_Ip_from === :fsa
+        if update_surfaces
+            FRESCO.compute_FSAs!(canvas, profile; update_surfaces)
+            FRESCO.update_gm9!(canvas)
+            FRESCO.update_area!(canvas)
+        end
+
+        gm1, gm9, area = canvas._gm1, canvas._gm9, canvas._area
+
+        psin = psinorm(canvas)
+
+        # compute the FF' contribution to Ip
+        Jf = (k, xx) -> -twopi * FFprime(canvas, profile, psin[k]) * gm1[k] / (μ₀ * gm9[k])
+        If_c = IMAS.trapz(area, Jf)
+
+        # compute total Ip
+        Jp = (k, xx) -> -twopi * Pprime(canvas, profile, psin[k]) / gm9[k]
+        Ic = If_c +  IMAS.trapz(area, Jp)
     end
-    Ic = sum(Jt) * step(Rs) * step(Zs)
 
     # scale FF' to fix Ip
     profile.ffp_scale *= 1 + (Ip - Ic) / If_c
+
     for (i,R) in enumerate(Rs)
         for j in eachindex(Zs)
             if is_inside[i, j]
@@ -390,16 +414,46 @@ function JtoR(canvas::Canvas, profile::PressureJt, psin=psinorm(canvas);
     return profile.J_scale .* profile.Jt.(get_x.(Ref(canvas), Ref(profile), psin)) .* gm9
 end
 
-function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces::Bool)
+function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces::Bool, compute_Ip_from::Symbol)
     Rs, Zs, Ψ, Ψaxis, Ψbnd, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd, canvas.Ip
     Jt, is_inside, Vp = canvas._Jt, canvas._is_inside, canvas._Vp
 
     Jt .= 0.0
     FRESCO.compute_FSAs!(canvas, profile; update_surfaces)
 
-    x = range(0.0, 1.0, length(Vp))
-    VJ = (k, xx) -> Vp[k] * JtoR(canvas, profile, x[k])
-    Ic = (Ψbnd - Ψaxis) * trapz(x, VJ) / (2π)
+    @assert compute_Ip_from in (:grid, :fsa)
+
+    if compute_Ip_from === :grid
+        # compute total current
+        for (i,R) in enumerate(Rs)
+            inv_R = 1.0 / R
+            R2 = R ^ 2
+            for j in eachindex(Zs)
+                if is_inside[i, j]
+                    psin = psinorm(Ψ[i, j], canvas)
+                    gm1_psin = canvas._gm1_itp(psin)
+                    pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin)
+                    jterm = JtoR(canvas, profile, psin) / gm1_psin
+                    Jt[i, j] = -inv_R * (pterm - jterm)
+                end
+            end
+        end
+        Ic = sum(Jt) * step(Rs) * step(Zs)
+
+    elseif compute_Ip_from === :fsa
+        if update_surfaces
+            (profile isa PressureJtoR) && FRESCO.update_gm9!(canvas)
+            FRESCO.update_area!(canvas)
+        end
+
+        gm9, area = canvas._gm9, canvas._area
+
+        # compute total Ip
+        psin = psinorm(canvas)
+        J = (k, xx) -> JtoR(canvas, profile, psin[k]) / gm9[k]
+        Ic = IMAS.trapz(area, J)
+    end
+
     profile.J_scale *= Ip / Ic
 
     for (i,R) in enumerate(Rs)

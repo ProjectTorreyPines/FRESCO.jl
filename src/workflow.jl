@@ -8,7 +8,8 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
                 control::Union{Nothing, Symbol}=:shape,
                 fixed_coils::AbstractVector{Int}=canvas._fixed_coils,
                 initialize_current=true,
-                initialize_mutuals=(control === :eddy))
+                initialize_mutuals=(control === :eddy),
+                compute_Ip_from::Symbol=:fsa)
 
     @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy)
 
@@ -32,10 +33,9 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
     converged = false
     error_outer = 0.0
-    update_surfaces = profile isa Union{PressureJtoR, PressureJt}
+    update_surfaces = (compute_Ip_from === :fsa) || (profile isa Union{PressureJtoR, PressureJt})
     for j in 1:Nout
         Ψa0 = canvas.Ψaxis
-        #Ψ .= 0.0
         invert_GS_zero_bnd!(canvas); # this defines U for the boundary integral
         set_boundary_flux!(canvas, j==1 ? 1.0 : relax)
         for i in 1:Nin
@@ -48,11 +48,10 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
                 @. Ψpl = (1.0 - relax) * Ψp0 + relax * Ψpl
             end
             update_bounds!(canvas; update_Ψitp=true)
-            Jtor!(canvas, profile; update_surfaces=(j==1 && i==1))
+            Jtor!(canvas, profile; update_surfaces=(j==1 && i==1), compute_Ip_from)
             error_inner = abs((canvas.Ψaxis - Ψai) / (relax * Ψai))
             if sum(debug) == 2
                 println("\tInner $(i):\t", canvas.Ψaxis, "\t", canvas.Ψbnd - canvas.Ψaxis, "\t", error_inner)
-                #j>1 && display(plot(canvas))
             end
         end
         if control === :shape
@@ -69,7 +68,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
 
         sync_Ψ!(canvas; update_Ψitp=true)
         update_bounds!(canvas; update_Ψitp=false)
-        Jtor!(canvas, profile; update_surfaces)
+        Jtor!(canvas, profile; update_surfaces, compute_Ip_from)
 
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         if sum(debug) > 0
