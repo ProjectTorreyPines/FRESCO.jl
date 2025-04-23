@@ -117,7 +117,7 @@ function eddy_control!(canvas::Canvas)
     ldiv!(mutuals_LU, tmp)
     tmp .*= -1
     for (k, coil) in enumerate(coils)
-        VacuumFields.set_current!(coil, VacuumFields.turns(coil) * tmp[k])
+        VacuumFields.set_current_per_turn!(coil, tmp[k])
     end
     set_Ψvac!(canvas)
 end
