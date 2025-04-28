@@ -38,7 +38,7 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     return canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
 end
 
-psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
+psinorm(psi::Real, canvas::Canvas) = max(0.0, min(1.0, (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)))
 psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas._surfaces))
 
 function boundary!(canvas::Canvas)
