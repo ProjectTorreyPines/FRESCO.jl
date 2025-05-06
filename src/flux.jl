@@ -9,11 +9,11 @@ function set_Ψvac!(canvas::Canvas)
     Rs, Zs, coils, Ψvac, Gvac = canvas.Rs, canvas.Zs, canvas.coils, canvas._Ψvac, canvas._Gvac
     Ψvac .= 0.0
     for k in eachindex(coils)
-        Ic = VacuumFields.current(coils[k])
-        Ic == 0.0 && continue
+        Icpt = VacuumFields.current_per_turn(coils[k])
+        Icpt == 0.0 && continue
         @tturbo for j in eachindex(Zs)
             for i in eachindex(Rs)
-                Ψvac[i, j] += Ic * Gvac[i, j, k]
+                Ψvac[i, j] += Icpt * Gvac[i, j, k]
             end
         end
     end
@@ -191,7 +191,7 @@ end
 coil_flux(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.ψ, canvas, x, y)
 coil_dψdR(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.dψ_dR, canvas, x, y)
 coil_dψdZ(canvas::Canvas, x::Real, y::Real) = _cfunc(VacuumFields.dψ_dZ, canvas, x, y)
-_cfunc(Pfunc::Function, canvas::Canvas, x::Real, y::Real) = sum(VacuumFields.current(coil) != 0.0 ? Pfunc(coil, x, y) : 0.0 for coil in canvas.coils)
+_cfunc(Pfunc::Function, canvas::Canvas, x::Real, y::Real) = sum(VacuumFields.current_per_turn(coil) != 0.0 ? Pfunc(coil, x, y) : 0.0 for coil in canvas.coils)
 
 function in_domain(r::Real, z::Real, canvas::Canvas)
     Rs, Zs = canvas.Rs, canvas.Zs
@@ -279,7 +279,7 @@ function plasma_flux_at_coil(k::Int, canvas::Canvas)
             flux += (J == 0.0) ? J :  J * Gv[i, j]
         end
     end
-    return VacuumFields.turns(coils[k]) * (twopi * μ₀) * (step(Rs) * step(Zs) * flux)
+    return (twopi * μ₀) * (step(Rs) * step(Zs) * flux)
 end
 
 function set_flux_at_coils!(canvas::Canvas)
@@ -288,7 +288,7 @@ function set_flux_at_coils!(canvas::Canvas)
     # poloidal flux from one coil to another is -M * current_per_turn
     for i in eachindex(coils)
         Ψ_at_coils[i] = plasma_flux_at_coil(i, canvas)
-        Ψ_at_coils[i] -= sum(mutuals[j, i] * VacuumFields.current(coils[j]) / VacuumFields.turns(coils[j]) for j in eachindex(coils))
+        Ψ_at_coils[i] -= sum(mutuals[j, i] * VacuumFields.current_per_turn(coils[j]) for j in eachindex(coils))
     end
     return canvas
 end

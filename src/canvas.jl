@@ -231,20 +231,11 @@ function Canvas(Rs::AbstractRange{T},
     if isempty(Green_table)
         Gvac = Array{T, 3}(undef, Nr, Nz, Nc)
         for (k, coil) in enumerate(coils)
-            # Green isn't threadsafe if coil is a MultiCoil and it's current is 0.0
-            # so we set it to 1.0, compute the Green's functions, and then reset it
-            if coil isa VacuumFields.MultiCoil
-                Ic = VacuumFields.current(coil)
-                Ic == 0.0 && VacuumFields.set_current!(coil, 1.0)
-            end
             @inbounds @fastmath Threads.@threads for j in eachindex(Zs)
                 z = Zs[j]
                 for (i, r) in enumerate(Rs)
                     Gvac[i, j, k] = VacuumFields.Green(coil, r, z)
                 end
-            end
-            if coil isa VacuumFields.MultiCoil
-                Ic == 0.0 && VacuumFields.set_current!(coil, Ic)
             end
         end
     else

@@ -39,6 +39,7 @@ function invert_GS!(canvas::Canvas; reset_boundary_flux=false, update_Ψitp::Boo
     @. @views Dl[1:end-1] = c[2:end-1] / hr2
     @. @views Du[2:end] = a[2:end-1] / hr2
 
+    # BCL 4/28/25: We should thread this loop
     for k in 0:Nz
         tmp = 2  * hr2_hz2 * (1.0 - cos(k * pi_Nz))
         @. @views D[2:end-1] = -(b[2:end-1] + tmp) / hr2
@@ -94,6 +95,7 @@ function invert_GS_zero_bnd!(canvas::Canvas)
     @. @views Dl[1:end-1] = c[2:end-1] / hr2
     @. @views Du[2:end] = a[2:end-1] / hr2
 
+    # BCL 4/28/25: We should thread this loop
     for k in 0:Nz
         tmp = 2  * hr2_hz2 * (1.0 - cos(k * pi_Nz))
         @. @views D[2:end-1] = -(b[2:end-1] + tmp) / hr2

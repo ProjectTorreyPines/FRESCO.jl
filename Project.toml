@@ -1,7 +1,7 @@
 name = "FRESCO"
 uuid = "f2db6eb9-2c54-4c18-912b-ce467796777a"
 authors = ["Brendan Lyons <lyonsbc@fusion.gat.com>"]
-version = "0.3.2"
+version = "0.3.3"
 
 [deps]
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
@@ -32,5 +32,5 @@ Printf = "1.11.0"
 QED = "1.4"
 RecipesBase = "1"
 StaticArrays = "1"
-VacuumFields = "3.1"
+VacuumFields = "4"
 julia = "1.11"
