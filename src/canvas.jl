@@ -62,6 +62,8 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractIn
     _Fpol_itp::DI
     _rho::Vector{T}
     _rho_itp::DI
+    _area::Vector{T}
+    _area_itp::DI
     _r_cache::Vector{T}
     _z_cache::Vector{T}
 end
@@ -264,6 +266,7 @@ function Canvas(Rs::AbstractRange{T},
     gm9 = zero(x)
     Fpol = zero(x)
     rho = zero(x)
+    area = zero(x)
     zitp = DataInterpolations.CubicSpline(zero(x), x; extrapolation=ExtrapolationType.None)
 
 
@@ -273,8 +276,8 @@ function Canvas(Rs::AbstractRange{T},
                   iso_cps, flux_cps, saddle_cps,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
                   A, B, M, LU, S, tmp_Ψ,
-                  surfaces, Vp, deepcopy(zitp), gm1, deepcopy(zitp), gm2p, deepcopy(zitp),
-                  gm9, deepcopy(zitp), Fpol, deepcopy(zitp), rho, deepcopy(zitp), r_cache, z_cache)
+                  surfaces, Vp, deepcopy(zitp), gm1, deepcopy(zitp), gm2p, deepcopy(zitp), gm9, deepcopy(zitp),
+                  Fpol, deepcopy(zitp), rho, deepcopy(zitp), area, deepcopy(zitp), r_cache, z_cache)
 end
 
 function bnd2mat(Nr::Int, Nz::Int, k::Int)
