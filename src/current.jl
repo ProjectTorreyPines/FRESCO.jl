@@ -309,14 +309,14 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
 
         gm1, gm9, area = canvas._gm1, canvas._gm9, canvas._area
 
-        psin = psinorm(canvas)
+        psins = psinorm(canvas)
 
         # compute the FF' contribution to Ip
-        Jf = (k, xx) -> -twopi * FFprime(canvas, profile, psin[k]) * gm1[k] / (μ₀ * gm9[k])
+        Jf = (k, xx) -> -twopi * FFprime(canvas, profile, psins[k]) * gm1[k] / (μ₀ * gm9[k])
         If_c = IMAS.trapz(area, Jf)
 
         # compute total Ip
-        Jp = (k, xx) -> -twopi * Pprime(canvas, profile, psin[k]) / gm9[k]
+        Jp = (k, xx) -> -twopi * Pprime(canvas, profile, psins[k]) / gm9[k]
         Ic = If_c +  IMAS.trapz(area, Jp)
     end
 
@@ -449,8 +449,8 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
         gm9, area = canvas._gm9, canvas._area
 
         # compute total Ip
-        psin = psinorm(canvas)
-        J = (k, xx) -> JtoR(canvas, profile, psin[k]) / gm9[k]
+        psins = psinorm(canvas)
+        J = (k, xx) -> JtoR(canvas, profile, psins[k]) / gm9[k]
         Ic = IMAS.trapz(area, J)
     end
 
