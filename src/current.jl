@@ -112,12 +112,12 @@ function PaxisIp(paxis, alpha_m, alpha_n)
     return PaxisIp(paxis, alpha_m, alpha_n, zero(paxis), zero(paxis))
 end
 
-function Pprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psin=psinorm(canvas))
-    return (profile.L * profile.Beta0 / canvas.Raxis) .* shape_function.(psin, Ref(profile))
+function Pprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psin::Real)
+    return (profile.L * profile.Beta0 / canvas.Raxis) * shape_function(psin, profile)
 end
 
-function FFprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psin=psinorm(canvas))
-    return μ₀ * profile.L * (1 - profile.Beta0) .* shape_function.(psin, Ref(profile))
+function FFprime(canvas::Canvas, profile::Union{BetapIp,PaxisIp}, psin::Real)
+    return μ₀ * profile.L * (1 - profile.Beta0) * shape_function(psin, profile)
 end
 
 function Jtor!(canvas::Canvas, profile::BetapIp; kwargs...)
@@ -258,17 +258,17 @@ function PprimeFFprime(dd::IMAS.dd, grid::Symbol=:psi_norm)
     return PprimeFFprime(pprime, ffprime, grid)
 end
 
-function Pprime(canvas::Canvas, profile::PprimeFFprime, psin=psinorm(canvas))
-    return profile.pprime.(get_x.(Ref(canvas), Ref(profile), psin))
+function Pprime(canvas::Canvas, profile::PprimeFFprime, psin::Real)
+    return profile.pprime(get_x(canvas, profile, psin))
 end
 
-function FFprime(canvas::Canvas, profile::PprimeFFprime, psin=psinorm(canvas))
-    profile.ffprime.(get_x.(Ref(canvas), Ref(profile), psin)) .* profile.ffp_scale
+function FFprime(canvas::Canvas, profile::PprimeFFprime, psin::Real)
+    profile.ffprime(get_x(canvas, profile, psin)) * profile.ffp_scale
 end
 
-function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin=psinorm(canvas);
-              gm1=canvas._gm1_itp.(psin))
-    return -twopi .* (Pprime.(Ref(canvas), Ref(profile), psin) .+ FFprime.(Ref(canvas), Ref(profile), psin) .* gm1 ./ μ₀)
+function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real;
+              gm1=canvas._gm1_itp(psin))
+    return -twopi * (Pprime(canvas, profile, psin) + FFprime(canvas, profile, psin) * gm1 / μ₀)
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, compute_Ip_from::Symbol)
@@ -393,25 +393,25 @@ function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:ps
     return PressureJt(pressure, Jt, grid)
 end
 
-function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin=psinorm(canvas))
-    dP_dx = pn -> DataInterpolations.derivative.(Ref(profile.pressure), get_x.(Ref(canvas), Ref(profile), pn))
+function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real)
+    dP_dx = pn -> DataInterpolations.derivative(profile.pressure, get_x(canvas, profile, pn))
     dpsin_dΨ = 1.0 / (canvas.Ψbnd - canvas.Ψaxis)
-    return dP_dx.(psin) .* dx_dpsin.(Ref(canvas), Ref(profile), psin) .* dpsin_dΨ
+    return dP_dx(psin) * dx_dpsin(canvas, profile, psin) * dpsin_dΨ
 end
 
-function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin=psinorm(canvas);
-                 gm1=canvas._gm1_itp.(psin))
-    return -μ₀ .* (Pprime.(Ref(canvas), Ref(profile), psin) .+
-                   JtoR.(Ref(canvas), Ref(profile), psin) ./ twopi) ./ gm1
+function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real;
+                 gm1=canvas._gm1_itp(psin))
+    return -μ₀ * (Pprime(canvas, profile, psin) +
+                   JtoR(canvas, profile, psin) / twopi) / gm1
 end
 
-function JtoR(canvas::Canvas, profile::PressureJtoR, psin=psinorm(canvas))
-    return profile.J_scale .* profile.JtoR.(get_x.(Ref(canvas), Ref(profile), psin))
+function JtoR(canvas::Canvas, profile::PressureJtoR, psin::Real)
+    return profile.J_scale * profile.JtoR(get_x(canvas, profile, psin))
 end
 
-function JtoR(canvas::Canvas, profile::PressureJt, psin=psinorm(canvas);
-              gm9=canvas._gm9_itp.(psin))
-    return profile.J_scale .* profile.Jt.(get_x.(Ref(canvas), Ref(profile), psin)) .* gm9
+function JtoR(canvas::Canvas, profile::PressureJt, psin::Real;
+              gm9=canvas._gm9_itp(psin))
+    return profile.J_scale * profile.Jt(get_x(canvas, profile, psin)) * gm9
 end
 
 function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces::Bool, compute_Ip_from::Symbol)

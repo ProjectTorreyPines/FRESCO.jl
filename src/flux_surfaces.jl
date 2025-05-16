@@ -159,7 +159,7 @@ function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     x = psinorm(canvas)
     psi1d = range(Ψaxis, Ψbnd, length(x))
     # starts as F^2
-    IMAS.cumtrapz!(Fpol, psi1d, FRESCO.FFprime(canvas, profile))
+    IMAS.cumtrapz!(Fpol, psi1d, FFprime.(Ref(canvas), Ref(profile), x))
     Fpol .= 2 .* Fpol .- Fpol[end] .+ Fbnd^2
     Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
     canvas._Fpol_itp = DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)
@@ -190,7 +190,7 @@ function update_gm2p!(canvas::Canvas, profile::AbstractCurrentProfile)
     gm2p, Ψaxis, Ψbnd, Vp = canvas._gm2p, canvas.Ψaxis, canvas.Ψbnd, canvas._Vp
     x = psinorm(canvas)
     fac = twopi * μ₀ * (Ψbnd - Ψaxis)
-    IMAS.cumtrapz!(gm2p, x, Vp .* JtoR(canvas, profile, x))
+    IMAS.cumtrapz!(gm2p, x, Vp .* JtoR.(Ref(canvas), Ref(profile), x))
     gm2p .*= fac ./ Vp
     canvas._gm2p_itp = DataInterpolations.CubicSpline(gm2p, x; extrapolation=ExtrapolationType.None)
     return canvas
