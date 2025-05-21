@@ -30,6 +30,12 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         set_flux_at_coils!(canvas)
     end
 
+    if control === :shape
+        coils, iso_cps, flux_cps, saddle_cps = canvas.coils, canvas._iso_cps, canvas._flux_cps, canvas._saddle_cps
+        @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
+        Acps = VacuumFields.define_A(active_coils; flux_cps, saddle_cps, iso_cps)
+    end
+
     sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
     converged = false
     error_outer = 0.0
@@ -55,7 +61,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
             end
         end
         if control === :shape
-            shape_control!(canvas, fixed_coils)
+            shape_control!(canvas, fixed_coils, Acps)
         elseif control === :radial
             radial_feedback!(canvas, Rtarget, 0.5)
         elseif control === :vertical

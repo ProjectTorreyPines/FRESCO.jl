@@ -258,17 +258,17 @@ function PprimeFFprime(dd::IMAS.dd, grid::Symbol=:psi_norm)
     return PprimeFFprime(pprime, ffprime, grid)
 end
 
-function Pprime(canvas::Canvas, profile::PprimeFFprime, psin::Real)
-    return profile.pprime(get_x(canvas, profile, psin))
+function Pprime(canvas::Canvas, profile::PprimeFFprime, psin::Real, x::Real=get_x(canvas, profile, psin))
+    return profile.pprime(x)
 end
 
-function FFprime(canvas::Canvas, profile::PprimeFFprime, psin::Real)
-    profile.ffprime(get_x(canvas, profile, psin)) * profile.ffp_scale
+function FFprime(canvas::Canvas, profile::PprimeFFprime, psin::Real, x::Real=get_x(canvas, profile, psin))
+    profile.ffprime(x) * profile.ffp_scale
 end
 
-function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real;
+function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real, x::Real=get_x(canvas, profile, psin);
               gm1=canvas._gm1_itp(psin))
-    return -twopi * (Pprime(canvas, profile, psin) + FFprime(canvas, profile, psin) * gm1 / μ₀)
+    return -twopi * (Pprime(canvas, profile, psin, x) + FFprime(canvas, profile, psin, x) * gm1 / μ₀)
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, compute_Ip_from::Symbol)
@@ -283,7 +283,8 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
             for j in eachindex(Zs)
                 if is_inside[i, j]
                     psin = psinorm(Ψ[i, j], canvas)
-                    Jt[i, j] = -twopi * FFprime(canvas, profile, psin) / (R * μ₀)
+                    x = get_x(canvas, profile, psin)
+                    Jt[i, j] = -twopi * FFprime(canvas, profile, psin, x) / (R * μ₀)
                 end
             end
         end
@@ -294,7 +295,8 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
             for j in eachindex(Zs)
                 if is_inside[i, j]
                     psin = psinorm(Ψ[i, j], canvas)
-                    Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin)
+                    x = get_x(canvas, profile, psin)
+                    Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin, x)
                 end
             end
         end
@@ -327,7 +329,8 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
         for j in eachindex(Zs)
             if is_inside[i, j]
                 psin = psinorm(Ψ[i, j], canvas)
-                Jt[i, j] = -twopi * (R * Pprime(canvas, profile, psin) + FFprime(canvas, profile, psin) / (R * μ₀))
+                x = get_x(canvas, profile, psin)
+                Jt[i, j] = -twopi * (R * Pprime(canvas, profile, psin, x) + FFprime(canvas, profile, psin, x) / (R * μ₀))
             end
         end
     end
@@ -393,30 +396,30 @@ function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:ps
     return PressureJt(pressure, Jt, grid)
 end
 
-function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real)
-    dP_dx = pn -> DataInterpolations.derivative(profile.pressure, get_x(canvas, profile, pn))
+function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real, x::Real=get_x(canvas, profile, psin))
+    dP_dx = DataInterpolations.derivative(profile.pressure, x)
     dpsin_dΨ = 1.0 / (canvas.Ψbnd - canvas.Ψaxis)
-    return dP_dx(psin) * dx_dpsin(canvas, profile, psin) * dpsin_dΨ
+    return dP_dx * dx_dpsin(canvas, profile, psin) * dpsin_dΨ
 end
 
-function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real;
+function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real, x::Real=get_x(canvas, profile, psin);
                  gm1=canvas._gm1_itp(psin))
-    return -μ₀ * (Pprime(canvas, profile, psin) +
-                   JtoR(canvas, profile, psin) / twopi) / gm1
+    return -μ₀ * (Pprime(canvas, profile, psin, x) +
+                  JtoR(canvas, profile, psin, x) / twopi) / gm1
 end
 
-function JtoR(canvas::Canvas, profile::PressureJtoR, psin::Real)
-    return profile.J_scale * profile.JtoR(get_x(canvas, profile, psin))
+function JtoR(canvas::Canvas, profile::PressureJtoR, psin::Real, x::Real=get_x(canvas, profile, psin))
+    return profile.J_scale * profile.JtoR(x)
 end
 
-function JtoR(canvas::Canvas, profile::PressureJt, psin::Real;
+function JtoR(canvas::Canvas, profile::PressureJt, psin::Real, x::Real=get_x(canvas, profile, psin);
               gm9=canvas._gm9_itp(psin))
-    return profile.J_scale * profile.Jt(get_x(canvas, profile, psin)) * gm9
+    return profile.J_scale * profile.Jt(x) * gm9
 end
 
 function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces::Bool, compute_Ip_from::Symbol)
-    Rs, Zs, Ψ, Ψaxis, Ψbnd, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψaxis, canvas.Ψbnd, canvas.Ip
-    Jt, is_inside, Vp = canvas._Jt, canvas._is_inside, canvas._Vp
+    Rs, Zs, Ψ, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip
+    Jt, is_inside = canvas._Jt, canvas._is_inside
 
     Jt .= 0.0
     FRESCO.compute_FSAs!(canvas, profile; update_surfaces)
@@ -432,8 +435,9 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
                 if is_inside[i, j]
                     psin = psinorm(Ψ[i, j], canvas)
                     gm1_psin = canvas._gm1_itp(psin)
-                    pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin)
-                    jterm = JtoR(canvas, profile, psin) / gm1_psin
+                    x = get_x(canvas, profile, psin)
+                    pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin, x)
+                    jterm = JtoR(canvas, profile, psin, x) / gm1_psin
                     Jt[i, j] = -inv_R * (pterm - jterm)
                 end
             end
@@ -463,8 +467,9 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
             if is_inside[i, j]
                 psin = psinorm(Ψ[i, j], canvas)
                 gm1_psin = canvas._gm1_itp(psin)
-                pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin)
-                jterm = JtoR(canvas, profile, psin) / gm1_psin
+                x = get_x(canvas, profile, psin)
+                pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin, x)
+                jterm = JtoR(canvas, profile, psin, x) / gm1_psin
                 Jt[i, j] = -inv_R * (pterm - jterm)
             end
         end
