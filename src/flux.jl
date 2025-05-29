@@ -7,17 +7,7 @@ end
 
 function set_Ψvac!(canvas::Canvas)
     Rs, Zs, coils, Ψvac, Gvac = canvas.Rs, canvas.Zs, canvas.coils, canvas._Ψvac, canvas._Gvac
-    Ψvac .= 0.0
-    for k in eachindex(coils)
-        Icpt = VacuumFields.current_per_turn(coils[k])
-        Icpt == 0.0 && continue
-        @tturbo for j in eachindex(Zs)
-            for i in eachindex(Rs)
-                Ψvac[i, j] += Icpt * Gvac[i, j, k]
-            end
-        end
-    end
-    Ψvac .*= 2π * μ₀
+    VacuumFields.flux_on_grid!(Ψvac, Gvac, Rs, Zs, coils)
     return canvas
 end
 
