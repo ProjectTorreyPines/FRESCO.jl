@@ -229,15 +229,7 @@ function Canvas(Rs::AbstractRange{T},
     Ψpl = zero(Ψ)
     Ψvac = zero(Ψ)
     if isempty(Green_table)
-        Gvac = Array{T, 3}(undef, Nr, Nz, Nc)
-        for (k, coil) in enumerate(coils)
-            @inbounds @fastmath Threads.@threads for j in eachindex(Zs)
-                z = Zs[j]
-                for (i, r) in enumerate(Rs)
-                    Gvac[i, j, k] = VacuumFields.Green(coil, r, z)
-                end
-            end
-        end
+        Gvac = VacuumFields.Green_table(Rs, Zs, coils)
     else
         @assert size(Green_table) == (Nr, Nz, Nc) "Green_table is incorrect size for grid and coils"
         Gvac = Green_table
