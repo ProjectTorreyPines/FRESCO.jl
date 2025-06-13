@@ -26,11 +26,7 @@ include("GSsolve.jl")
 include("feedback.jl")
 include("workflow.jl")
 
-export Canvas
-export psinorm
-export invert_GS!, invert_GS_zero_bnd!
-export initial_current
-export solve!
+export Canvas, solve!
 
 const document = Dict()
 document[Symbol(@__MODULE__)] = [name for name in Base.names(@__MODULE__, all=false, imported=false) if name != Symbol(@__MODULE__)]
