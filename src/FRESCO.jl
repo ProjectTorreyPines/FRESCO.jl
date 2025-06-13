@@ -14,10 +14,12 @@ import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
 using Plots
 using LoopVectorization: @turbo, @tturbo
+import QED
 
 const μ₀ = π * 4e-7
 const twopi = 2π
 
+include("qed.jl")
 include("canvas.jl")
 include("current.jl")
 include("flux.jl")
