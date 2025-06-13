@@ -249,7 +249,7 @@ end
 
 PprimeFFprime(pprime::DataInterpolations.AbstractInterpolation, ffprime::DataInterpolations.AbstractInterpolation, grid::Symbol=:psi_norm) = PprimeFFprime(pprime, ffprime, 1.0, grid)
 
-function PprimeFFprime(dd::IMAS.dd; grid::Symbol=:psi_norm)
+function PprimeFFprime(dd::IMAS.dd, grid::Symbol=:psi_norm)
     eqt1d = dd.equilibrium.time_slice[].profiles_1d
     check_grid(grid)
     x = getproperty(eqt1d, grid)
