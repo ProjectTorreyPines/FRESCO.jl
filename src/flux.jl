@@ -6,7 +6,7 @@ function sync_Ψ!(canvas::Canvas; update_vacuum::Bool=false, update_Ψitp::Bool=
 end
 
 function set_Ψvac!(canvas::Canvas)
-    Rs, Zs, coils, Ψvac, Gvac = canvas.Rs, canvas.Zs, canvas.coils, canvas._Ψvac, canvas._Gvac
+    Rs, Zs, coils, Ψvac, Gvac = canvas.Rs, canvas.Zs, canvas.coils, canvas._Ψvac, canvas.Green_table
     VacuumFields.flux_on_grid!(Ψvac, Gvac, Rs, Zs, coils)
     return canvas
 end
@@ -259,7 +259,7 @@ function plasma_flux_2D(canvas::Canvas, x::Real, y::Real)
 end
 
 function plasma_flux_at_coil(k::Int, canvas::Canvas)
-    Rs, Zs, coils, Gvac, Jt = canvas.Rs, canvas.Zs, canvas.coils, canvas._Gvac, canvas._Jt
+    Rs, Zs, coils, Gvac, Jt = canvas.Rs, canvas.Zs, canvas.coils, canvas.Green_table, canvas._Jt
     @assert k in eachindex(coils)
     Gv = @view(Gvac[:, :, k])
     flux = zero(eltype(Jt))

@@ -4,7 +4,7 @@
 
 # Initialize to uniform current in ellipse half the size of domain
 function initial_current(canvas::Canvas, R::Real, Z::Real)
-    Rb, Zb, Ip = canvas._Rb_target, canvas._Zb_target, canvas.Ip
+    Rb, Zb, Ip = canvas.Rb_target, canvas.Zb_target, canvas.Ip
     Rmin, Rmax = extrema(Rb)
     Zmin, Zmax = extrema(Zb)
 

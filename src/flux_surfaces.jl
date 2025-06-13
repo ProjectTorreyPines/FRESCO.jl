@@ -39,7 +39,7 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
 end
 
 psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
-psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas._surfaces))
+psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd
@@ -113,14 +113,14 @@ end
 
 function trace_surfaces!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis
-    Ψbnd, Ψitp, Rw, Zw, surfaces = canvas.Ψbnd, canvas._Ψitp, canvas.Rw, canvas.Zw, canvas._surfaces
+    Ψbnd, Ψitp, Rw, Zw, surfaces = canvas.Ψbnd, canvas._Ψitp, canvas.Rw, canvas.Zw, canvas.surfaces
     r_cache, z_cache = canvas._r_cache, canvas._z_cache
     psi_levels = range(Ψaxis, Ψbnd, length(surfaces))
     return IMAS.trace_simple_surfaces!(surfaces, psi_levels, Rs, Zs, Ψ, Ψitp, Raxis, Zaxis, Rw, Zw, r_cache, z_cache)
 end
 
 function update_Vp!(canvas::Canvas)
-    Ip, Vp, surfaces = canvas.Ip, canvas._Vp, canvas._surfaces
+    Ip, Vp, surfaces = canvas.Ip, canvas._Vp, canvas.surfaces
     sign_dpsi = sign(Ip)
     Threads.@threads for k in eachindex(surfaces)
         Vp[k] = sign_dpsi * surfaces[k].int_fluxexpansion_dl
@@ -132,7 +132,7 @@ end
 
 gm1_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j] ^ 2
 function update_gm1!(canvas::Canvas)
-    gm1, surfaces = canvas._gm1, canvas._surfaces
+    gm1, surfaces = canvas._gm1, canvas.surfaces
     Threads.@threads for k in eachindex(surfaces)
         f1 = (j, xx) -> gm1_integrand(j, surfaces[k])
         gm1[k] = IMAS.flux_surface_avg(f1, surfaces[k])
@@ -144,7 +144,7 @@ end
 
 gm9_integrand(j, surface) = surface.fluxexpansion[j] / surface.r[j]
 function update_gm9!(canvas::Canvas)
-    gm9, surfaces = canvas._gm9, canvas._surfaces
+    gm9, surfaces = canvas._gm9, canvas.surfaces
     Threads.@threads for k in eachindex(surfaces)
         f9 = (j, xx) -> gm9_integrand(j, surfaces[k])
         gm9[k] = IMAS.flux_surface_avg(f9, surfaces[k])

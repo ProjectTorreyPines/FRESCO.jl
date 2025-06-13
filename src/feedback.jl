@@ -73,7 +73,7 @@ function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Re
 end
 
 function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    Rs, Zs, Ψpl, coils, iso_cps, flux_cps, saddle_cps = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas._iso_cps, canvas._flux_cps, canvas._saddle_cps
+    Rs, Zs, Ψpl, coils, iso_cps, flux_cps, saddle_cps = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
     Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
     Ψpl = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
     dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)

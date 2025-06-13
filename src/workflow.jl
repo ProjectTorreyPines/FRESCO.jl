@@ -1,12 +1,12 @@
 using Printf
 function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
-                Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
-                Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
+                Rtarget = 0.5 * sum(extrema(canvas.Rb_target)),
+                Ztarget = canvas.Zb_target[argmax(canvas.Rb_target)],
                 debug=0,
                 relax::Real=0.5,
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
-                fixed_coils::AbstractVector{Int}=canvas._fixed_coils,
+                fixed_coils::AbstractVector{Int}=canvas.fixed_coils,
                 initialize_current=true,
                 initialize_mutuals=(control === :eddy),
                 compute_Ip_from::Symbol=:fsa)
@@ -31,7 +31,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 
     if control === :shape
-        coils, iso_cps, flux_cps, saddle_cps = canvas.coils, canvas._iso_cps, canvas._flux_cps, canvas._saddle_cps
+        coils, iso_cps, flux_cps, saddle_cps = canvas.coils, canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
         @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
         Acps = VacuumFields.define_A(active_coils; flux_cps, saddle_cps, iso_cps)
         b_offset = zeros(size(Acps, 1))
