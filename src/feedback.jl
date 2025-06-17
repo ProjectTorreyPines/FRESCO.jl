@@ -134,6 +134,7 @@ function update_profile!(profile::PressureJtoR, Qstate::QED.QED_state)
 end
 
 function implicit_eddy!(canvas::Canvas, profile::AbstractCurrentProfile)
+    gridded_Jtor!(canvas)
     Qsystem = canvas.Qsystem
 
     # reset intial q profile
