@@ -82,49 +82,6 @@ function setup_Qsystem!(canvas::Canvas, profile::PressureJtoR;
     return
 end
 
-# """
-#     initialize_build(dd::IMAS.dd, coils::CoilVectorType)
-
-# Initialize a QED_build
-# """
-# function initialize_build(dd::IMAS.dd, coils::CoilVectorType)
-
-#     Mcc = [VacuumFields.mutual(c1, c2) for c1 in coils, c2 in coils]
-#     Ic = [VacuumFields.current_per_turn(c) for c in coils] #current per turn
-#     Rc = [VacuumFields.resistance(c) for c in coils];
-#     Vc = Ic .* Rc
-#     V_waveforms = QED.Waveform.(Vc)
-
-#     eqt = dd.equilibrium.time_slice[]
-#     eqt1d = eqt.profiles_1d
-#     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
-#     Ip = eqt.global_quantities.ip
-
-#     # COIL MUTUALS
-#     # in COCOS 11, psi = -L * I
-#     Mpc = zeros(length(coils))
-#     dMpc_dt = zero(Mpc) # How Mpc changes in time (like shape)... to test later
-
-#     # INTERNAL INDUCTANCE
-#     Ψ = eqt2d.psi
-#     Jt = eqt2d.j_tor
-#     Ψbnd = eqt1d.psi[end]
-#     Rs, Zs = eqt2d.grid.dim1, eqt2d.grid.dim2
-#     dR, dZ = Rs[2] - Rs[1], Zs[2] - Zs[1] # assume fixed grid
-#     Wp = -0.5 * dR * dZ * sum((Ψ[i, j] - Ψbnd) * Jt[i, j] for i in eachindex(Rs)[2:end], j in eachindex(Zs))
-#     Li = 2 * Wp / Ip ^ 2
-
-#     # EXTERNAL INDUCTANCE
-#     # in COCOS 11, psi = -L * I
-#     Le = -Ψbnd / Ip
-#     Lp = (Li + Le)
-
-#     Rp = 0.0
-#     Vni = 0.0
-
-#     return QED.QED_build(Ic, Vc, Rc, Mcc, Vni, Rp, Lp, Mpc, dMpc_dt, V_waveforms)
-# end
-
 function update_Qsystem!(canvas::Canvas, profile::PressureJtoR)
     @assert !isnothing(canvas.Qsystem)
 

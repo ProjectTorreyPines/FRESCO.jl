@@ -1,15 +1,5 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-# mutable struct QED_system{Qs<:QED.QED_state, F, Qb<:QED.QED_build, T<:Real}
-#     Qstate0::Qs
-#     Qstate1::Qs
-#     η::F
-#     build0::Qb
-#     build1::Qb
-#     tmax::T
-#     Nt::Int
-# end
-
 @kwdef mutable struct QED_system{Qs<:QED.QED_state, F, Qb<:QED.QED_build, T<:Real, S<:Real}
     Qstate::Qs
     Qbuild::Qb
