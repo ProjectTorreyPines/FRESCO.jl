@@ -121,3 +121,42 @@ function eddy_control!(canvas::Canvas)
     end
     set_Ψvac!(canvas)
 end
+
+
+# Implicit eddy
+
+function update_profile!(profile::PressureJtoR, Qstate::QED.QED_state)
+    x = Qstate.ρ
+    profile.JtoR = DataInterpolations.CubicSpline(QED.Jt_R(Qstate), x; extrapolation=ExtrapolationType.Extension)
+    profile.J_scale = 1.0
+    profile.grid = :rho_tor_norm
+    return
+end
+
+function implicit_eddy!(canvas::Canvas, profile::AbstractCurrentProfile)
+    Qsystem = canvas.Qsystem
+
+    # reset intial q profile
+    Qsystem.Qstate.ι = Qsystem.Qstate._ι_eq
+
+    # update forward time of Qsystem and Qbuild based on new canvas
+    update_Qsystem!(canvas, profile)
+    update_Qbuild!(Qsystem)
+
+    # Advance coupled plasma-coil system
+    Qsystem.Qstate = QED.evolve(Qsystem.Qstate, Qsystem.η, Qsystem.Qbuild, Qsystem.tmax, Qsystem.Nt)
+
+    # set forward currents in coils
+    Qsystem.Ic[2] .= Qsystem.Qbuild.Ic
+
+    VacuumFields.set_current_per_turn!.(canvas.coils, Qsystem.Ic[2])
+
+    # set target Ip
+    canvas.Ip = Qsystem.Ip[2] = QED.Ip(Qsystem.Qstate)
+
+    # update current profile
+    update_profile!(profile, canvas.Qsystem.Qstate)
+
+    set_Ψvac!(canvas)
+
+end
