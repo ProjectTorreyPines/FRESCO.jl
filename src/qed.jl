@@ -39,10 +39,10 @@ function QED_system(dd::IMAS.dd{T}, coils::CoilVectorType) where {T<:Real}
     Qbuild =  QED.QED_build(Ic0, Vc0, Rc, Mcc, Vni0, Rp0, Lp0, dLp_dt, Mpc0, dMpc_dt, Vwf0)
 
     Ip = @MVector[Ip0, Ip0]
-    Ic = [Ic0, Ic0]
+    Ic = [deepcopy(Ic0), deepcopy(Ic0)]
     Li = @MVector[Li0, Li0]
     Le = @MVector[Le0, Le0]
-    Mpc = [Mpc0, Mpc0]
+    Mpc = [deepcopy(Mpc0), deepcopy(Mpc0)]
     Rp = @MVector[Rp0, Rp0]
     Vni = @MVector[Vni0, Vni0]
     return QED_system(; Qstate, Qbuild, η, Ip, Ic, Li, Le, Mpc, Rp, Vni)
