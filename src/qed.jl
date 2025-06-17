@@ -85,16 +85,18 @@ end
 function update_Qsystem!(canvas::Canvas, profile::PressureJtoR)
     @assert !isnothing(canvas.Qsystem)
 
-    Rs, Zs, Ψ, Ψbnd, Jt, Ip, coils = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψbnd, canvas._Jt, canvas.Ip, canvas.coils
+    Rs, Zs, Ψ, Ψbnd, Jt, coils = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ψbnd, canvas._Jt, canvas.coils
     is_inside, gm1_itp, gm2p_itp, Fpol_itp, rho_itp = canvas._is_inside, canvas._gm1_itp, canvas._gm2p_itp, canvas._Fpol_itp, canvas._rho_itp
     Qsystem = canvas.Qsystem
 
-    Qsystem.Ip[2] = QED.Ip(Qsystem.Qstate)
+    dR, dZ = Base.step(Rs), Base.step(Zs)
+    Ip = dR * dZ * sum(Jt)
+
+    Qsystem.Ip[2] = NaN
     for k in eachindex(coils)
         Qsystem.Mpc[2][k] = -FRESCO.plasma_flux_at_coil(k, canvas) / Ip
     end
 
-    dR, dZ = Base.step(Rs), Base.step(Zs)
     Wp = -0.5 * dR * dZ * sum((Ψ[i, j] - Ψbnd) * Jt[i, j] for i in eachindex(Rs), j in eachindex(Zs))
     Qsystem.Li[2] = 2 * Wp / Ip ^ 2
     Qsystem.Le[2] = -(Ψbnd + sum(Qsystem.Mpc[1][k] * Qsystem.Ic[1][k] for k in eachindex(coils))) / Ip
