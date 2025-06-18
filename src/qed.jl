@@ -65,9 +65,10 @@ function setup_Qsystem!(canvas::Canvas, profile::PressureJtoR;
     Qsystem.tmax = tmax
     Qsystem.Nt = Nt
 
+    @. Qsystem.Ic[1] = Qsystem.Ic[2] = VacuumFields.current_per_turn(canvas.coils)
+
     update_Qsystem!(canvas, profile) # this sets all the values in [2]
 
-    @. Qsystem.Ic[1] = Qsystem.Ic[2] = VacuumFields.current_per_turn(canvas.coils)
 
     # now copy values in [2] to [1] for initialization
     Qsystem.Ip[1]   = Qsystem.Ip[2]
@@ -99,7 +100,7 @@ function update_Qsystem!(canvas::Canvas, profile::PressureJtoR)
 
     Wp = -0.5 * dR * dZ * sum((Ψ[i, j] - Ψbnd) * Jt[i, j] for i in eachindex(Rs), j in eachindex(Zs))
     Qsystem.Li[2] = 2 * Wp / Ip ^ 2
-    Qsystem.Le[2] = -(Ψbnd + sum(Qsystem.Mpc[1][k] * Qsystem.Ic[1][k] for k in eachindex(coils))) / Ip
+    Qsystem.Le[2] = -(Ψbnd + sum(Qsystem.Mpc[2][k] * Qsystem.Ic[2][k] for k in eachindex(coils))) / Ip
 
     Rp = 0.0
     Vni = 0.0
