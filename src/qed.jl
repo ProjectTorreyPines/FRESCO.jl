@@ -60,6 +60,8 @@ function setup_Qsystem!(canvas::Canvas, profile::PressureJtoR;
         update_bounds!(canvas; update_Ψitp=false)
         FRESCO.compute_FSAs!(canvas, profile; update_surfaces=true)
         Jtor!(canvas, profile; update_surfaces=true, compute_Ip_from)
+    else
+        gridded_Jtor!(canvas)
     end
 
     Qsystem.tmax = tmax

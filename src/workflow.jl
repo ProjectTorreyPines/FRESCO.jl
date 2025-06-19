@@ -7,13 +7,16 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
                 fixed_coils::AbstractVector{Int}=canvas.fixed_coils,
-                initialize_current::Bool=true,
+                initialize_current::Bool=(all(iszero, canvas.Ψ) && control !== :eddy),
                 initialize_mutuals=(control === :eddy),
                 compute_Ip_from::Symbol=:fsa)
 
     @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy)
 
     if initialize_current
+        if control === :eddy
+            @warn "Eddy control should be used from existing equilibrium solution, so initialize_current should likely be false."
+        end
         J = (x,y) -> initial_current(canvas, x, y)
         gridded_Jtor!(canvas, J)
     else
