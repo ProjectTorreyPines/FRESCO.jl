@@ -73,14 +73,16 @@ function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Re
 end
 
 function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    Rs, Zs, Ψpl, coils, iso_cps, flux_cps, saddle_cps = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
+    Rs, Zs, Ψpl, coils = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils
+    iso_cps, flux_cps, saddle_cps, λ_regularize = canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps, canvas.λ_regularize
+
     Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
     Ψpl = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
     dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
     dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
     @views fixed_coils = coils[fixed]
     @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
-    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps, flux_cps, saddle_cps, fixed_coils, A=Acps, b_offset)
+    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps, flux_cps, saddle_cps, fixed_coils, A=Acps, b_offset, λ_regularize)
     set_Ψvac!(canvas)
     return canvas
 end

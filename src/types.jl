@@ -38,6 +38,7 @@ end
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
     Qsystem::Qs = nothing
+    λ_regularize::T = 1e-14
     _Ψpl::Matrix{T} = zero(Ψ)
     _Ψvac::Matrix{T} = zero(Ψ)
     _Gbnd::Matrix{T} = compute_Gbnd(Rs, Zs)

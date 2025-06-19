@@ -131,12 +131,13 @@ function Canvas(Rs::AbstractRange{T},
                 surfaces::Vector{<:IMAS.SimpleSurface};
                 fixed_coils::Vector{Int}=Int[],
                 Green_table::Array{T, 3}=VacuumFields.Green_table(Rs, Zs, coils),
-                Qsystem::Union{Nothing, QED_system}=nothing) where {T<:Real}
+                Qsystem::Union{Nothing, QED_system}=nothing,
+                kwargs...) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     @assert size(Ψ) == (Nr, Nz) "Ψ is incorrect size for Rs and Zs grid"
     @assert size(Green_table) == (Nr, Nz, length(coils)) "Green_table is incorrect size for grid and coils"
 
-    return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces, fixed_coils, Green_table, Qsystem)
+    return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces, fixed_coils, Green_table, Qsystem, kwargs...)
 end
 
 function Canvas(canvas0::C; kwargs...) where {C <: Canvas}
