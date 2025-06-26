@@ -121,3 +121,16 @@ function eddy_control!(canvas::Canvas)
     end
     set_Ψvac!(canvas)
 end
+
+function fit_magnetics!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
+    Rs, Zs, Ψpl, coils, loop_cps, flux_cps, field_cps = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas._loop_cps, canvas._flux_cps, canvas._field_cps
+    Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
+    Ψpl = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
+    dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
+    dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
+    @views fixed_coils = coils[fixed]
+    @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
+    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; loop_cps, flux_cps, field_cps, fixed_coils, A=Acps, b_offset)
+    set_Ψvac!(canvas)
+    return canvas
+end
