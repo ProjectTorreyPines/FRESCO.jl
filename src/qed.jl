@@ -95,7 +95,6 @@ function update_Qsystem!(canvas::Canvas, profile::PressureJtoR)
     dR, dZ = Base.step(Rs), Base.step(Zs)
     Ip = dR * dZ * sum(Jt)
 
-    Qsystem.Ip[2] = NaN
     for k in eachindex(coils)
         Qsystem.Mpc[2][k] = -FRESCO.plasma_flux_at_coil(k, canvas) / Ip
     end
@@ -135,7 +134,7 @@ function update_Qsystem!(canvas::Canvas, profile::PressureJtoR)
     return
 end
 
-function update_Qbuild!(Qsystem::QED_system; V_waveforms = Qsystem.Qbuild.V_waveforms)
+function update_Qbuild!(Qsystem::QED_system; V_waveforms = Qsystem.Qbuild.V_waveforms, θimp=0.0)
     Qbuild, Ic, Li, Le, Mpc, Rp, Vni = Qsystem.Qbuild, Qsystem.Ic, Qsystem.Li, Qsystem.Le, Qsystem.Mpc, Qsystem.Rp, Qsystem.Vni
     @assert length(V_waveforms) == length(Qbuild.V_waveforms)
 
@@ -143,11 +142,11 @@ function update_Qbuild!(Qsystem::QED_system; V_waveforms = Qsystem.Qbuild.V_wave
     # Qbuild.Rc and Qbuild.Mcc don't change
 
     # these all are taken at the halfway point
-    Qbuild.Vni = 0.5 * sum(Vni)
-    Qbuild.Rp = 0.5 * sum(Rp)
+    Qbuild.Vni = θimp * Vni[2] + (1 - θimp) * Vni[1]
+    Qbuild.Rp = θimp * Rp[2] + (1 - θimp) * Rp[1]
     Lp = Li + Le
-    Qbuild.Lp = 0.5 * sum(Lp)
-    @. Qbuild.Mpc = 0.5 * (Mpc[1] + Mpc[2])
+    Qbuild.Lp = θimp * Lp[2] + (1 - θimp) * Lp[1]
+    @. Qbuild.Mpc = θimp * Mpc[2] + (1 - θimp) * Mpc[1]
 
     # finite difference for dLp_dt and dMpc_dt
     Qbuild.dLp_dt = (Lp[2] - Lp[1]) / Qsystem.tmax

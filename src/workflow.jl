@@ -123,12 +123,17 @@ function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin
         elseif control === :eddy
             eddy_control!(canvas)
         elseif control === :implicit
-            implicit_eddy!(canvas, profile)
+            implicit_eddy!(canvas, profile; relax)
         end
 
         sync_Ψ!(canvas; update_Ψitp=true)
         update_bounds!(canvas; update_Ψitp=false)
         Jtor!(canvas, profile; update_surfaces, compute_Ip_from)
+
+        if control === :implicit
+            # now that we have a new solution, update the forward time of QED_system
+            update_Qsystem!(canvas, profile)
+        end
 
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         if sum(debug) > 0
