@@ -3,25 +3,29 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     Rs, Zs, Ψ, Ip, Ψitp, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Ψitp, canvas._is_in_wall
     psisign = sign(Ip)
 
-    # find initial guess
-    ia, ja = 0, 0
-    found = false
-    for j in eachindex(Zs)[2:end-1]
-        for i in eachindex(Rs)[2:end-1]
-            !is_in_wall[i, j] && continue
-            P = psisign * Ψ[i, j]
-            if P == minimum(p -> psisign * p, @view(Ψ[i-1:i+1, j-1:j+1]))
-                if !found
-                    ia, ja = i, j
-                    found = true
-                else
-                    display(plot(canvas))
-                    throw("Found multiple minimum Ψ points: $((ia, ja)) and $((i, j))")
+    if canvas.Raxis == 0.0
+        # find initial guess
+        ia, ja = 0, 0
+        found = false
+        for j in eachindex(Zs)[2:end-1]
+            for i in eachindex(Rs)[2:end-1]
+                !is_in_wall[i, j] && continue
+                P = psisign * Ψ[i, j]
+                if P == minimum(p -> psisign * p, @view(Ψ[i-1:i+1, j-1:j+1]))
+                    if !found
+                        ia, ja = i, j
+                        found = true
+                    else
+                        display(plot(canvas))
+                        throw("Found multiple minimum Ψ points: $((ia, ja)) and $((i, j))")
+                    end
                 end
             end
         end
+        Rg, Zg = Rs[ia], Zs[ja]
+    else
+        Rg, Zg = canvas.Raxis, canvas.Zaxis
     end
-    Rg, Zg = Rs[ia], Zs[ja]
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
 end
