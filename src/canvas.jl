@@ -28,6 +28,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
                 load_QED_system::Bool=false,
+                fixed_coils::Union{Nothing, Vector{Int}}=nothing,
                 kwargs...) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
@@ -60,22 +61,26 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     append!(iso_cps, xiso_cps)
 
     # define coils
-    fixed_coils = Int[]
     if coils === nothing
         coils = VacuumFields.MultiCoils(dd; load_pf_active, load_pf_passive)
-        if load_pf_active
-            kpassive0 = length(dd.pf_active.coil)
-            for (k, coil) in enumerate(dd.pf_active.coil)
-                if :shaping ∉ (IMAS.index_2_name(coil.function)[f.index] for f in coil.function)
-                    push!(fixed_coils, k)
+        if fixed_coils === nothing
+            fixed_coils = Int[]
+            if load_pf_active
+                kpassive0 = length(dd.pf_active.coil)
+                for (k, coil) in enumerate(dd.pf_active.coil)
+                    if :shaping ∉ (IMAS.index_2_name(coil.function)[f.index] for f in coil.function)
+                        push!(fixed_coils, k)
+                    end
                 end
+            else
+                kpassive0 = 0
             end
-        else
-            kpassive0 = 0
+            if load_pf_passive
+                fixed_coils = vcat(fixed_coils, kpassive0 .+ eachindex(dd.pf_passive.loop))
+            end
         end
-        if load_pf_passive
-            fixed_coils = vcat(fixed_coils, kpassive0 .+ eachindex(dd.pf_passive.loop))
-        end
+    elseif fixed_coils === nothing
+        fixed_coils = Int[]
     end
 
     # define current and F at boundary
