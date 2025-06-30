@@ -73,14 +73,16 @@ function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Re
 end
 
 function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    Rs, Zs, Ψpl, coils, iso_cps, flux_cps, saddle_cps = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas._iso_cps, canvas._flux_cps, canvas._saddle_cps
+    Rs, Zs, Ψpl, coils = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils
+    iso_cps, flux_cps, saddle_cps, λ_regularize = canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps, canvas.λ_regularize
+
     Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
     Ψpl = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
     dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
     dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
     @views fixed_coils = coils[fixed]
     @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
-    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps, flux_cps, saddle_cps, fixed_coils, A=Acps, b_offset)
+    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps, flux_cps, saddle_cps, fixed_coils, A=Acps, b_offset, λ_regularize)
     set_Ψvac!(canvas)
     return canvas
 end
@@ -120,4 +122,52 @@ function eddy_control!(canvas::Canvas)
         VacuumFields.set_current_per_turn!(coil, tmp[k])
     end
     set_Ψvac!(canvas)
+end
+
+
+# Implicit eddy
+
+function update_profile!(profile::PressureJtoR, Qstate::QED.QED_state; relax::Real=1.0)
+    x = Qstate.ρ
+    JtoR = QED.Jt_R(Qstate)
+    @. JtoR = relax * JtoR + (1.0 - relax) * profile.JtoR(x) * profile.J_scale
+    profile.JtoR = DataInterpolations.CubicSpline(JtoR, x; extrapolation=ExtrapolationType.Extension)
+    profile.J_scale = 1.0
+    profile.grid = :rho_tor_norm
+    return
+end
+
+function implicit_eddy!(canvas::Canvas, profile::AbstractCurrentProfile; relax::Real=1.0)
+    gridded_Jtor!(canvas)
+    Qsystem = canvas.Qsystem
+    #BSON.@save "/Users/lyons/Qsystem.bson" Qsystem
+
+    # reset intial q profile
+    Qsystem.Qstate.ι = Qsystem.Qstate._ι_eq
+
+    # # update forward time of Qsystem and Qbuild based on new canvas
+    # update_Qsystem!(canvas, profile)
+    # update_Qbuild!(Qsystem)
+
+    # update Qbuild only; Qsystem after
+    update_Qbuild!(Qsystem)
+
+    # Advance coupled plasma-coil system
+    #Qbuild = Qsystem.Qbuild
+    #Qbuild.dLp_dt = 0.0
+    Qsystem.Qstate = QED.evolve(Qsystem.Qstate, Qsystem.η, Qsystem.Qbuild, Qsystem.tmax, Qsystem.Nt)
+
+    # set forward currents in coils
+    @. Qsystem.Ic[2] = (1.0 - relax) * Qsystem.Ic[2] + relax * Qsystem.Qbuild.Ic
+
+    VacuumFields.set_current_per_turn!.(canvas.coils, Qsystem.Ic[2])
+
+    # set target Ip
+    canvas.Ip = Qsystem.Ip[2] = (1.0 - relax) * Qsystem.Ip[2] + relax * QED.Ip(Qsystem.Qstate)
+
+    # update current profile
+    update_profile!(profile, canvas.Qsystem.Qstate; relax)
+
+    set_Ψvac!(canvas)
+
 end
