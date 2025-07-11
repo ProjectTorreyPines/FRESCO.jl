@@ -127,7 +127,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
         iso_cps = VacuumFields.IsoControlPoints(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
         strike_weight = strike_points_weight / length(eqt.boundary.strike_point)
-        strike_cps = VacuumFields.IsoControlPoint{T}[VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, strike_weight) for strike_point in eqt.boundary.strike_point]
+        strike_cps = VacuumFields.IsoControlPoint{T}[VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, 0.0, strike_weight) for strike_point in eqt.boundary.strike_point]
         append!(iso_cps, strike_cps)
 
         # Saddle control points
@@ -139,24 +139,45 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
         end
         append!(iso_cps, xiso_cps)
     else
-        saddle_cps = VacuumFields.SaddleControlPoint{T}[]       
+        iso_cps = VacuumFields.IsoControlPoint{T}[]
+        saddle_cps = VacuumFields.SaddleControlPoint{T}[]
     end
 
-    if !isempty(dd.magnetics)
-        probes = dd.magnetics.b_field_pol_probes[]
-        loops = dd.magnetics.flux_loops[]
+    flux_cps = VacuumFields.FluxControlPoint{T}[]
+    loop_cps = VacuumFields.IsoControlPoint{T}[]
+    if !isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) && !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux)
+        probes = dd.magnetics.b_field_pol_probe
+        loops = dd.magnetics.flux_loop
         iref = reference_flux_loop_index
 
         # Probe control points (Note: validity, type, and size ignored)
-        field_cps = VacuumFields.FieldControlPoints{T}[probes.position.r, probes.position.z, probes.poloidal_angle, IMAS.@ddtime(probes.field.data), magnetic_probe_weights]
+        #IMAS allows probes to mix toroidal and poloidal fields so that needs to be accounted for
+        bpol_field = k -> isempty(probes[k].toroidal_angle) ? IMAS.@ddtime(probes[k].field.data) : IMAS.@ddtime(probes[k].field.data) * (1 - cos(probes[k].poloidal_angle) * sin(probes[k].toroidal_angle))
+        if isempty(magnetic_probe_weights)
+            field_cps = [VacuumFields.FieldControlPoint{T}(probes[k].position.r, probes[k].position.z, probes[k].poloidal_angle, bpol_field(k), 1.0) for k in eachindex(probes)]
+        else
+            field_cps = [VacuumFields.FieldControlPoint{T}(probes[k].position.r, probes[k].position.z, probes[k].poloidal_angle, bpol_field(k), magnetic_probe_weights[k]) for k in eachindex(probes)]
+        end
+
 
         # Flux loop control points (Note: validity, type, and size ignored)
-        loop_cps = VacuumFields.IsoRefControlPoints{T}[loops.position.r, loops.position.z, IMAS.@ddtime(loops.flux.data), iref, flux_loop_weights]
-        flux_cps = VacuumFields.FluxControlPoint{T}[loops[iref].position.r, loops[iref].position.z, IMAS.@ddtime(loops[iref].flux.data), flux_loop_weights[iref]]
+        N = length(loops)
+
+        if isempty(flux_loop_weights)
+            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
+                ck = IMAS.index_circular(N, k)
+                push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), 1.0))
+            end
+            push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), 1.0))
+        else
+            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
+                ck = IMAS.index_circular(N, k)
+                push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), flux_loop_weights[ck]))
+            end
+            push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), flux_loop_weights[iref]))
+        end
     else
-        flux_cps = VacuumFields.FluxControlPoint{T}[]
         field_cps = VacuumFields.FieldControlPoint{T}[]
-        loop_cps = VacuumFields.IsoControlPoint{T}[]
     end
 
     # define coils
@@ -185,7 +206,11 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+    if !isempty(eqt.boundary)
+        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+    else
+        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Float64[], Float64[], iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+    end
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -205,7 +230,7 @@ function Canvas(Rs::AbstractRange{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
-                field_cps::Vector{VacuumFields.FieldControlPoint{T}};
+                field_cps::Vector{VacuumFields.FieldControlPoint{T}},
                 loop_cps::Vector{VacuumFields.IsoControlPoint{T}};
                 fixed_coils::Vector{Int}=Int[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
