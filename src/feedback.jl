@@ -130,7 +130,7 @@ function fit_magnetics!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix
     dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
     @views fixed_coils = coils[fixed]
     @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
-    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; loop_cps, flux_cps, field_cps, fixed_coils, A=Acps, b_offset)
+    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps = loop_cps, flux_cps, field_cps, fixed_coils, A=Acps, b_offset)
     set_Ψvac!(canvas)
     return canvas
 end

@@ -40,10 +40,10 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     elseif control === :fit_magnetics
         coils, loop_cps, flux_cps, field_cps = canvas.coils, canvas._loop_cps, canvas._flux_cps, canvas._field_cps
         @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
-        Acps = VacuumFields.define_A(active_coils; flux_cps, loop_cps, field_cps)
+        Acps = VacuumFields.define_A(active_coils; flux_cps, iso_cps = loop_cps, field_cps)
         b_offset = zeros(size(Acps, 1))
         fcs = @views coils[fixed_coils]
-        VacuumFields.offset_b!(b_offset; flux_cps, loop_cps, field_cps, fixed_coils=fcs)
+        VacuumFields.offset_b!(b_offset; flux_cps, iso_cps = loop_cps, field_cps, fixed_coils=fcs)
     end
 
     sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
