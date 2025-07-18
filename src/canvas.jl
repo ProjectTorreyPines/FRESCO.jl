@@ -145,41 +145,65 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
 
     flux_cps = VacuumFields.FluxControlPoint{T}[]
     loop_cps = VacuumFields.IsoControlPoint{T}[]
+    field_cps = VacuumFields.FieldControlPoint{T}[]
     if !isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) && !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux)
-        probes = dd.magnetics.b_field_pol_probe
         loops = dd.magnetics.flux_loop
         iref = reference_flux_loop_index
 
-        # Probe control points (Note: validity, type, and size ignored)
+        # Probe control points (Note: type and size ignored)
         #IMAS allows probes to mix toroidal and poloidal fields so that needs to be accounted for
-        bpol_field = k -> isempty(probes[k].toroidal_angle) ? IMAS.@ddtime(probes[k].field.data) : IMAS.@ddtime(probes[k].field.data) * (1 - cos(probes[k].poloidal_angle) * sin(probes[k].toroidal_angle))
-        if isempty(magnetic_probe_weights)
-            field_cps = [VacuumFields.FieldControlPoint{T}(probes[k].position.r, probes[k].position.z, probes[k].poloidal_angle, bpol_field(k), 1.0 / IMAS.@ddtime(probes[k].field.data_σ)) for k in eachindex(probes)]
-        else
-            field_cps = [VacuumFields.FieldControlPoint{T}(probes[k].position.r, probes[k].position.z, probes[k].poloidal_angle, bpol_field(k), magnetic_probe_weights[k] / IMAS.@ddtime(probes[k].field.data_σ)) for k in eachindex(probes)]
+        for (k, probe) in enumerate(dd.magnetics.b_field_pol_probe)
+            !isempty(probe.field.validity) && probe.field.validity < 0 && continue
+            weight = isempty(magnetic_probe_weights) ? 1.0 : magnetic_probe_weights[k]
+            if !isempty(eqt.constraints) && !isempty(eqt.constraints.bpol_probe) && !isempty(eqt.constraints.bpol_probe[k].weight)
+                eqt.constraints.bpol_probe[k].weight < eps() && continue
+                weight *= eqt.constraints.bpol_probe[k].weight
+            end
+            if !isempty(probe.field.data_σ) 
+                IMAS.@ddtime(probe.field.data_σ) < eps() && continue
+                weight /= IMAS.@ddtime(probe.field.data_σ)
+            end
+            bpol_field = isempty(probe.toroidal_angle) ? IMAS.@ddtime(probe.field.data) : IMAS.@ddtime(probe.field.data) * (1 - cos(probe.poloidal_angle) * sin(probe.toroidal_angle))
+
+            push!(field_cps, VacuumFields.FieldControlPoint{T}(probe.position.r, probe.position.z, probe.poloidal_angle, bpol_field, weight))
         end
 
 
-        # Flux loop control points (Note: validity, type, and size ignored)
+        # Flux loop control points (Note: type and size ignored)
         N = length(loops)
-        if isempty(flux_loop_weights)
-            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
-                ck = IMAS.index_circular(N, k)
-                push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), 1.0 / IMAS.@ddtime(loops[ck].flux.data_σ)))
+        for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
+            ck = IMAS.index_circular(N, k)
+
+            !isempty(loops[ck].flux.validity) && loops[ck].flux.validity < 0 && continue
+            weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[ck]
+            if !isempty(eqt.constraints) && !isempty(eqt.constraints.flux_loop) && !isempty(eqt.constraints.flux_loop[ck].weight)
+                eqt.constraints.flux_loop[ck].weight < eps() && continue
+                weight *= eqt.constraints.flux_loop[ck].weight
             end
-            push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), 1.0 / IMAS.@ddtime(loops[iref].flux.data_σ)))
-        else
-            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
-                ck = IMAS.index_circular(N, k)
-                push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), flux_loop_weights[ck] / IMAS.@ddtime(loops[ck].flux.data_σ)))
+            if !isempty(loops[ck].flux.data_σ)
+                IMAS.@ddtime(loops[ck].flux.data_σ) < eps() && continue
+                weight /=  IMAS.@ddtime(loops[ck].flux.data_σ)
             end
-            push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), flux_loop_weights[iref] / IMAS.@ddtime(loops[iref].flux.data_σ)))
+
+            push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), weight))
         end
+        weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[iref]
+        if !isempty(loops[iref].flux.validity)
+            @assert loops[iref].flux.validity >= 0
+        end
+        if !isempty(eqt.constraints) && !isempty(eqt.constraints.flux_loop) && !isempty(eqt.constraints.flux_loop[iref].weight)
+            @assert eqt.constraints.flux_loop[iref].weight > eps()
+            weight *= eqt.constraints.flux_loop[iref].weight
+        end
+        if !isempty(loops[iref].flux.data_σ)
+            @assert IMAS.@ddtime(loops[iref].flux.data_σ) > eps()
+            weight /= IMAS.@ddtime(loops[iref].flux.data_σ)
+        end
+
+        push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), weight))
 
         append!(loop_cps, iso_cps) # TESTING
 
-    else
-        field_cps = VacuumFields.FieldControlPoint{T}[]
     end
 
     # define coils
