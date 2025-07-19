@@ -135,7 +135,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
         saddle_cps = VacuumFields.SaddleControlPoint{T}[VacuumFields.SaddleControlPoint{T}(x_point.r, x_point.z, saddle_weight) for x_point in eqt.boundary.x_point]
         xiso_cps = Vector{VacuumFields.IsoControlPoint{T}}(undef, length(active_x_points))
         for (k, ax) in enumerate(active_x_points)
-            xiso_cps[k] = VacuumFields.IsoControlPoint{T}(eqt.boundary.x_point[ax].r, eqt.boundary.x_point[ax].z, iso_cps[1].R2, iso_cps[1].Z2, saddle_weight)
+            xiso_cps[k] = VacuumFields.IsoControlPoint{T}(eqt.boundary.x_point[ax].r, eqt.boundary.x_point[ax].z, iso_cps[1].R2, iso_cps[1].Z2, 0.0, saddle_weight)
         end
         append!(iso_cps, xiso_cps)
     else
@@ -159,7 +159,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 eqt.constraints.bpol_probe[k].weight < eps() && continue
                 weight *= eqt.constraints.bpol_probe[k].weight
             end
-            if !isempty(probe.field.data_σ) 
+            if !isempty(probe.field.data_σ)
                 IMAS.@ddtime(probe.field.data_σ) < eps() && continue
                 weight /= IMAS.@ddtime(probe.field.data_σ)
             end
