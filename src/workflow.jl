@@ -11,7 +11,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
                 initialize_mutuals=(control === :eddy),
                 compute_Ip_from::Symbol=:fsa)
 
-    @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy)
+    @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy, :magnetics)
 
     if initialize_current
         J = (x,y) -> initial_current(canvas, x, y)
@@ -30,13 +30,16 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         set_flux_at_coils!(canvas)
     end
 
-    if control === :shape
-        coils, iso_cps, flux_cps, saddle_cps = canvas.coils, canvas._iso_cps, canvas._flux_cps, canvas._saddle_cps
+    if control in [:shape, :magnetics]
+        coils, flux_cps = canvas.coils, canvas._flux_cps
+        ctrl_kwargs = (control === :shape) ?
+            (; flux_cps, iso_cps = canvas._iso_cps, saddle_cps = canvas._saddle_cps) :
+            (; flux_cps, iso_cps = canvas._loop_cps, field_cps = canvas._field_cps)
         @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
-        Acps = VacuumFields.define_A(active_coils; flux_cps, saddle_cps, iso_cps)
+        Acps = VacuumFields.define_A(active_coils; ctrl_kwargs...)
         b_offset = zeros(size(Acps, 1))
         fcs = @views coils[fixed_coils]
-        VacuumFields.offset_b!(b_offset; flux_cps, saddle_cps, iso_cps, fixed_coils=fcs)
+        VacuumFields.offset_b!(b_offset; fixed_coils=fcs, ctrl_kwargs...)
     end
 
     sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
@@ -73,6 +76,8 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
             axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
         elseif control === :eddy
             eddy_control!(canvas)
+        elseif control === :magnetics
+            magnetics!(canvas, fixed_coils, Acps, b_offset)
         end
 
         sync_Ψ!(canvas; update_Ψitp=true)

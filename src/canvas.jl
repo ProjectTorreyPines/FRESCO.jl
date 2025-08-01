@@ -31,6 +31,8 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractIn
     _iso_cps::Vector{VacuumFields.IsoControlPoint{T}}
     _flux_cps::Vector{VacuumFields.FluxControlPoint{T}}
     _saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}}
+    _field_cps::Vector{VacuumFields.FieldControlPoint{T}}
+    _loop_cps::Vector{VacuumFields.IsoControlPoint{T}}
     _vs_circuit::C1
     _rs_circuit::C2
     _Ψ_at_coils::Vector{T}
@@ -101,38 +103,125 @@ end
 function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
                 coils=nothing, load_pf_active=true, load_pf_passive=true,
-                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
+                x_points_weight::Real=1.0, strike_points_weight::Real=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
+                reference_flux_loop_index::Int=1,
+                flux_loop_weights::AbstractVector{<:Real}=T[],
+                magnetic_probe_weights::AbstractVector{<:Real}=T[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
-    boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
 
     wall_r, wall_z = map(collect, IMAS.first_wall(dd.wall))
-    if isempty(wall_r)
-        mxh = IMAS.MXH(eqt.boundary.outline.r, eqt.boundary.outline.z, 2)
-        mxh.ϵ *= 1.1
-        wall_r, wall_z = mxh(100)
+
+    if !isempty(eqt.boundary)
+        boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
+
+        if isempty(wall_r)
+            mxh = IMAS.MXH(eqt.boundary.outline.r, eqt.boundary.outline.z, 2)
+            mxh.ϵ *= 1.1
+            wall_r, wall_z = mxh(100)
+        end
+
+        # Boundary control points
+        iso_cps = VacuumFields.IsoControlPoints(eqt.boundary.outline.r, eqt.boundary.outline.z)
+
+        strike_weight = strike_points_weight / length(eqt.boundary.strike_point)
+        strike_cps = VacuumFields.IsoControlPoint{T}[VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, 0.0, strike_weight) for strike_point in eqt.boundary.strike_point]
+        append!(iso_cps, strike_cps)
+
+        # Saddle control points
+        saddle_weight = x_points_weight / length(eqt.boundary.x_point)
+        saddle_cps = VacuumFields.SaddleControlPoint{T}[VacuumFields.SaddleControlPoint{T}(x_point.r, x_point.z, saddle_weight) for x_point in eqt.boundary.x_point]
+        xiso_cps = Vector{VacuumFields.IsoControlPoint{T}}(undef, length(active_x_points))
+        for (k, ax) in enumerate(active_x_points)
+            xiso_cps[k] = VacuumFields.IsoControlPoint{T}(eqt.boundary.x_point[ax].r, eqt.boundary.x_point[ax].z, iso_cps[1].R2, iso_cps[1].Z2, 0.0, saddle_weight)
+        end
+        append!(iso_cps, xiso_cps)
+    else
+        iso_cps = VacuumFields.IsoControlPoint{T}[]
+        saddle_cps = VacuumFields.SaddleControlPoint{T}[]
     end
 
-    # Boundary control points
-    iso_cps = VacuumFields.IsoControlPoints(eqt.boundary.outline.r, eqt.boundary.outline.z)
-
-    strike_weight = strike_points_weight / length(eqt.boundary.strike_point)
-    strike_cps = VacuumFields.IsoControlPoint{T}[VacuumFields.IsoControlPoint{T}(strike_point.r, strike_point.z, iso_cps[1].R2, iso_cps[1].Z2, strike_weight) for strike_point in eqt.boundary.strike_point]
-    append!(iso_cps, strike_cps)
-
-    # Flux control points
     flux_cps = VacuumFields.FluxControlPoint{T}[]
+    loop_cps = VacuumFields.IsoControlPoint{T}[]
+    field_cps = VacuumFields.FieldControlPoint{T}[]
+    if !isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) && !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux)
 
-    # Saddle control points
-    saddle_weight = x_points_weight / length(eqt.boundary.x_point)
-    saddle_cps = VacuumFields.SaddleControlPoint{T}[VacuumFields.SaddleControlPoint{T}(x_point.r, x_point.z, saddle_weight) for x_point in eqt.boundary.x_point]
-    xiso_cps = Vector{VacuumFields.IsoControlPoint{T}}(undef, length(active_x_points))
-    for (k, ax) in enumerate(active_x_points)
-        xiso_cps[k] = VacuumFields.IsoControlPoint{T}(eqt.boundary.x_point[ax].r, eqt.boundary.x_point[ax].z, iso_cps[1].R2, iso_cps[1].Z2, saddle_weight)
+        # Probe control points (Note: type and size ignored)
+        min_σ = minimum(IMAS.@ddtime(probe.field.data_σ) for probe in dd.magnetics.b_field_pol_probe)
+        for (k, probe) in enumerate(dd.magnetics.b_field_pol_probe)
+            !isempty(probe.field.validity) && probe.field.validity < 0 && continue
+            weight = isempty(magnetic_probe_weights) ? 1.0 : magnetic_probe_weights[k]
+            if !isempty(probe.field.data_σ)
+                IMAS.@ddtime(probe.field.data_σ) < eps() && continue
+                weight /= IMAS.@ddtime(probe.field.data_σ) / min_σ
+            end
+            #IMAS allows probes to mix toroidal and poloidal fields so that needs to be accounted for
+            bpol_field = isempty(probe.toroidal_angle) ? IMAS.@ddtime(probe.field.data) : IMAS.@ddtime(probe.field.data) * (1 - cos(probe.poloidal_angle) * sin(probe.toroidal_angle))
+
+            push!(field_cps, VacuumFields.FieldControlPoint{T}(probe.position.r, probe.position.z, probe.poloidal_angle, bpol_field, weight))
+        end
+
+
+        # Flux loop control points (Note: type and size ignored)
+        iref = reference_flux_loop_index
+        loops = dd.magnetics.flux_loop
+        if iref > 0
+            # Fit a single reference flux value and the difference between the other flux_loops and this value (this is how EFIT fits the flux loops on DIII-D)
+            N = length(loops)
+            @assert iref <= N
+            min_σ = 1/eps()
+            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
+                ck = IMAS.index_circular(N, k)
+                if !isempty(loops[ck].flux.data_σ)
+                    IMAS.@ddtime(loops[ck].flux.data_σ) < eps() && continue
+                    min_σ = IMAS.@ddtime(loops[ck].flux.data_σ) < min_σ ? IMAS.@ddtime(loops[ck].flux.data_σ) : min_σ
+                end
+            end
+            for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
+                ck = IMAS.index_circular(N, k)
+
+                !isempty(loops[ck].flux.validity) && loops[ck].flux.validity < 0 && continue
+                weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[ck]
+                if !isempty(loops[ck].flux.data_σ)
+                    IMAS.@ddtime(loops[ck].flux.data_σ) < eps() && continue
+                    weight /=  IMAS.@ddtime(loops[ck].flux.data_σ) / min_σ
+                end
+
+                push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), weight))
+            end
+            weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[iref]
+            if !isempty(loops[iref].flux.validity)
+                @assert loops[iref].flux.validity >= 0
+            end
+
+            push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), weight))
+        else
+            # Fit each flux loop separately (this is how EFIT fits flux loops on NSTX and older DIII-D shots)
+            if !isempty(dd.dataset_description) && !isempty(dd.dataset_description.data_entry) && !isempty(dd.dataset_description.data_entry.machine) && dd.dataset_description.data_entry.machine == "DIII-D"
+                ref_σ = IMAS.@ddtime(loops[1].flux.data_σ) # TODO: this should only be used for recent DIII-D shots (not older)
+                min_σ = ref_σ
+            else
+                ref_σ = 0
+                min_σ = minimum(IMAS.@ddtime(loop.flux.data_σ) for loop in dd.magnetics.flux_loop)
+            end
+            for (k, loop) in enumerate(dd.magnetics.flux_loop)
+
+                !isempty(loop.flux.validity) && loop.flux.validity < 0 && continue
+                weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[k]
+                if !isempty(loop.flux.data_σ)
+                    IMAS.@ddtime(loop.flux.data_σ) < eps() && continue
+                    if !isempty(dd.dataset_description) && !isempty(dd.dataset_description.data_entry) && !isempty(dd.dataset_description.data_entry.machine) && dd.dataset_description.data_entry.machine == "DIII-D" && k != 1
+                        weight /= (ref_σ + IMAS.@ddtime(loop.flux.data_σ)) / min_σ
+                    end
+                end
+
+                push!(flux_cps, VacuumFields.FluxControlPoint{T}(loop.position[1].r, loop.position[1].z, IMAS.@ddtime(loop.flux.data), weight))
+            end
+        end
+
     end
-    append!(iso_cps, xiso_cps)
 
     # define coils
     fixed_coils = Int[]
@@ -160,7 +249,11 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
+    if !isempty(eqt.boundary)
+        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+    else
+        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, T[], T[], iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+    end
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -179,13 +272,15 @@ function Canvas(Rs::AbstractRange{T},
                 Zb_target::Vector{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
-                saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}};
+                saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
+                field_cps::Vector{VacuumFields.FieldControlPoint{T}},
+                loop_cps::Vector{VacuumFields.IsoControlPoint{T}};
                 fixed_coils::Vector{Int}=Int[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     Ψ = zeros(T, Nr, Nz)
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces; fixed_coils, Green_table)
+    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
 end
 
 function Canvas(Rs::AbstractRange{T},
@@ -201,6 +296,8 @@ function Canvas(Rs::AbstractRange{T},
                 iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
+                field_cps::Vector{VacuumFields.FieldControlPoint{T}},
+                loop_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 surfaces::Vector{<:IMAS.SimpleSurface};
                 fixed_coils::Vector{Int}=Int[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
@@ -265,7 +362,7 @@ function Canvas(Rs::AbstractRange{T},
     r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
     return Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
                   SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
-                  iso_cps, flux_cps, saddle_cps,
+                  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps,
                   vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
                   A, B, M, LU, S, tmp_Ψ,
                   surfaces, Vp, deepcopy(zitp), gm1, deepcopy(zitp), gm2p, deepcopy(zitp), gm9, deepcopy(zitp),
@@ -398,6 +495,12 @@ end
             end
             @series begin
                 canvas._saddle_cps
+            end
+            @series begin
+                canvas._field_cps
+            end
+            @series begin
+                canvas._loop_cps
             end
         end
         @series begin
