@@ -106,8 +106,8 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 x_points_weight::Real=1.0, strike_points_weight::Real=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
                 reference_flux_loop_index::Int=1,
-                flux_loop_weights::AbstractVector{Float64}=T[],
-                magnetic_probe_weights::AbstractVector{Float64}=T[],
+                flux_loop_weights::AbstractVector{<:Real}=T[],
+                magnetic_probe_weights::AbstractVector{<:Real}=T[],
                 Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
@@ -153,7 +153,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
         for (k, probe) in enumerate(dd.magnetics.b_field_pol_probe)
             !isempty(probe.field.validity) && probe.field.validity < 0 && continue
             weight = isempty(magnetic_probe_weights) ? 1.0 : magnetic_probe_weights[k]
-            if !isempty(probe.field.data_σ) 
+            if !isempty(probe.field.data_σ)
                 IMAS.@ddtime(probe.field.data_σ) < eps() && continue
                 weight /= IMAS.@ddtime(probe.field.data_σ) / min_σ
             end
