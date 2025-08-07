@@ -163,20 +163,21 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
             push!(field_cps, VacuumFields.FieldControlPoint{T}(probe.position.r, probe.position.z, probe.poloidal_angle, bpol_field, weight))
         end
 
-
         # Flux loop control points (Note: type and size ignored)
         iref = reference_flux_loop_index
         loops = dd.magnetics.flux_loop
         if iref > 0
-            # Fit a single reference flux value and the difference between the other flux_loops and this value (this is how EFIT fits the flux loops on DIII-D)
+            # Fit a single reference flux value and the difference between the other flux_loops and this value (this matches how data is collected on DIII-D and fit with EFIT)
             N = length(loops)
             @assert iref <= N
+            # Convert from total flux uncertainty (IMAS convention) to differential
+            relative_σ(k) = sqrt(IMAS.@ddtime(dd.magnetics.flux_loop[k].flux.data_σ)^2 - IMAS.@ddtime(dd.magnetics.flux_loop[iref].flux.data_σ)^2)
             min_σ = 1/eps()
             for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
                 ck = IMAS.index_circular(N, k)
                 if !isempty(loops[ck].flux.data_σ)
                     IMAS.@ddtime(loops[ck].flux.data_σ) < eps() && continue
-                    min_σ = IMAS.@ddtime(loops[ck].flux.data_σ) < min_σ ? IMAS.@ddtime(loops[ck].flux.data_σ) : min_σ
+                    min_σ = relative_σ(ck) < min_σ ? relative_σ(ck) : min_σ
                 end
             end
             for k in (iref+1):(iref+N-1) # exclude i_ref explicitly
@@ -186,7 +187,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
                 weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[ck]
                 if !isempty(loops[ck].flux.data_σ)
                     IMAS.@ddtime(loops[ck].flux.data_σ) < eps() && continue
-                    weight /=  IMAS.@ddtime(loops[ck].flux.data_σ) / min_σ
+                    weight /=  relative_σ(ck) / min_σ
                 end
 
                 push!(loop_cps, VacuumFields.IsoControlPoint{T}(loops[ck].position[1].r, loops[ck].position[1].z, loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[ck].flux.data) - IMAS.@ddtime(loops[iref].flux.data), weight))
@@ -198,29 +199,20 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
 
             push!(flux_cps, VacuumFields.FluxControlPoint{T}(loops[iref].position[1].r, loops[iref].position[1].z, IMAS.@ddtime(loops[iref].flux.data), weight))
         else
-            # Fit each flux loop separately (this is how EFIT fits flux loops on NSTX and older DIII-D shots)
-            if !isempty(dd.dataset_description) && !isempty(dd.dataset_description.data_entry) && !isempty(dd.dataset_description.data_entry.machine) && dd.dataset_description.data_entry.machine == "DIII-D"
-                ref_σ = IMAS.@ddtime(loops[1].flux.data_σ) # TODO: this should only be used for recent DIII-D shots (not older)
-                min_σ = ref_σ
-            else
-                ref_σ = 0
-                min_σ = minimum(IMAS.@ddtime(loop.flux.data_σ) for loop in dd.magnetics.flux_loop)
-            end
+            # Fit each flux loop separately (this is how data is collected on NSTX and fit with EFIT)
+            min_σ = minimum(IMAS.@ddtime(loop.flux.data_σ) for loop in dd.magnetics.flux_loop)
             for (k, loop) in enumerate(dd.magnetics.flux_loop)
 
                 !isempty(loop.flux.validity) && loop.flux.validity < 0 && continue
                 weight = isempty(flux_loop_weights) ? 1.0 : flux_loop_weights[k]
                 if !isempty(loop.flux.data_σ)
                     IMAS.@ddtime(loop.flux.data_σ) < eps() && continue
-                    if !isempty(dd.dataset_description) && !isempty(dd.dataset_description.data_entry) && !isempty(dd.dataset_description.data_entry.machine) && dd.dataset_description.data_entry.machine == "DIII-D" && k != 1
-                        weight /= (ref_σ + IMAS.@ddtime(loop.flux.data_σ)) / min_σ
-                    end
+                    weight /= IMAS.@ddtime(loop.flux.data_σ) / min_σ
                 end
 
                 push!(flux_cps, VacuumFields.FluxControlPoint{T}(loop.position[1].r, loop.position[1].z, IMAS.@ddtime(loop.flux.data), weight))
             end
         end
-
     end
 
     # define coils
