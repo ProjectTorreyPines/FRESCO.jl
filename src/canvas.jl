@@ -6,12 +6,10 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; kwargs...) where {T<:Real}
 
     if (length(Rimas) == Nr) && (length(Zimas) == Nz)
         # use exact flux from dd
-        Rs, Zs, Ψ = Rimas, Zimas, deepcopy(eqt2d.psi)
+        Rs, Zs = Rimas, Zimas
     else
         Rs = range(Rimas[1], Rimas[end], Nr)
         Zs = range(Zimas[1], Zimas[end], Nz)
-        PSI_interpolant = ψ_interpolant(Rimas, Zimas, eqt2d.psi)
-        Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
     canvas = Canvas(dd, Rs, Zs; kwargs...)
@@ -23,7 +21,6 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) w
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
     if !isnothing(eqt2d)
-        display(eqt2d)
         Rimas = IMAS.to_range(eqt2d.grid.dim1)
         Zimas = IMAS.to_range(eqt2d.grid.dim2)
 
