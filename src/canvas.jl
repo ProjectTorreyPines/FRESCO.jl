@@ -70,10 +70,7 @@ mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractIn
     _z_cache::Vector{T}
 end
 
-function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
-                load_pf_active::Bool=true, load_pf_passive::Bool=true,
-                x_points_weight::Float64=1.0, strike_points_weight::Float64=1.0,
-                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
+function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; kwargs...) where {T<:Real}
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
     Rimas = IMAS.to_range(eqt2d.grid.dim1)
@@ -89,19 +86,34 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr;
         Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
     end
 
-    canvas = Canvas(dd, Rs, Zs, Ψ;
-                    load_pf_active, load_pf_passive,
-                    x_points_weight, strike_points_weight,
-                    Green_table)
+    canvas = Canvas(dd, Rs, Zs; kwargs...)
 
-    update_bounds!(canvas)
-    trace_surfaces!(canvas)
-    gridded_Jtor!(canvas)
     return canvas
 end
 
-function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
-                Ψ::Matrix{T}=zeros(T, length(Rs), length(Zs));
+function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) where {T<:Real}
+    eqt = dd.equilibrium.time_slice[]
+    eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
+    if !isnothing(eqt2d)
+        display(eqt2d)
+        Rimas = IMAS.to_range(eqt2d.grid.dim1)
+        Zimas = IMAS.to_range(eqt2d.grid.dim2)
+
+        if (Rimas == Rs) && (Zimas == Zs)
+            # use exact flux from dd
+            Ψ = deepcopy(eqt2d.psi)
+        else
+            PSI_interpolant = ψ_interpolant(Rimas, Zimas, eqt2d.psi)
+            Ψ = [PSI_interpolant(r, z) for r in Rs, z in Zs]
+        end
+    else
+        Ψ = zeros(T, length(Rs), length(Zs))
+    end
+
+    return Canvas(dd, Rs, Zs, Ψ; kwargs...)
+end
+
+function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T};
                 coils=nothing, load_pf_active=true, load_pf_passive=true,
                 x_points_weight::Real=1.0, strike_points_weight::Real=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
@@ -257,6 +269,12 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen,
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
+
+    if !all(iszero, Ψ)
+        update_bounds!(canvas)
+        trace_surfaces!(canvas)
+        gridded_Jtor!(canvas)
+    end
 
     return canvas
 end
