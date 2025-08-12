@@ -1,30 +1,48 @@
-function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
-    update_Ψitp && update_interpolation!(canvas)
-    Rs, Zs, Ψ, Ip, Ψitp, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Ψitp, canvas._is_in_wall
+function search_axis_guess(canvas::Canvas)
+    Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
     psisign = sign(Ip)
 
-    if canvas.Raxis == 0.0
-        # find initial guess
-        ia, ja = 0, 0
-        found = false
-        for j in eachindex(Zs)[2:end-1]
-            for i in eachindex(Rs)[2:end-1]
-                !is_in_wall[i, j] && continue
-                P = psisign * Ψ[i, j]
-                if P == minimum(p -> psisign * p, @view(Ψ[i-1:i+1, j-1:j+1]))
-                    if !found
-                        ia, ja = i, j
-                        found = true
-                    else
-                        display(plot(canvas))
-                        throw("Found multiple minimum Ψ points: $((ia, ja)) and $((i, j))")
-                    end
+    ia, ja = 0, 0
+    found = false
+    for j in eachindex(Zs)[2:end-1]
+        for i in eachindex(Rs)[2:end-1]
+            !is_in_wall[i, j] && continue
+            P = psisign * Ψ[i, j]
+            if P == minimum(p -> psisign * p, @view(Ψ[i-1:i+1, j-1:j+1]))
+                if !found
+                    ia, ja = i, j
+                    found = true
+                else
+                    error("Found multiple minimum Ψ points: $((ia, ja)) and $((i, j))")
                 end
             end
         end
         Rg, Zg = Rs[ia], Zs[ja]
     else
         Rg, Zg = canvas.Raxis, canvas.Zaxis
+    end
+    return Rs[ia], Zs[ja]
+end
+
+
+function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
+    update_Ψitp && update_interpolation!(canvas)
+    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
+    psisign = sign(Ip)
+
+    # find initial guess
+    Rg, Zg = try
+        # search for a local minimum in the grid
+        search_axis_guess(canvas)
+    catch e
+        if canvas.Raxis > 0.0
+            # use the last known axis location, if valid
+            canvas.Raxis, canvas.Zaxis
+        else
+            println("search_axis_guess() reported error: ", e)
+            display(plot(canvas))
+            error("Could not find magnetic axis guess from grid and no previous axis location available")
+        end
     end
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
@@ -39,7 +57,14 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     axis2bnd = (canvas.Ip >= 0.0) ? :increasing : :decreasing
     Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
                                   PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
-    return canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
+    try
+        canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
+    catch e
+        p = plot(canvas)
+        scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
+        display(p)
+        rethrow(e)
+    end
 end
 
 psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
@@ -48,9 +73,6 @@ psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd
     is_inside, r_cache, z_cache = canvas._is_inside, canvas._r_cache, canvas._z_cache
-    #B = IMAS.flux_surface(Rs, Zs, Ψ, Raxis, Zaxis, Float64[], Float64[], Ψbnd, :closed)
-    #@assert length(B) == 1
-    #r, z = B[1].r, B[1].z
     r, z = IMASutils.contour_from_midplane!(r_cache, z_cache, Ψ, Rs, Zs, Ψbnd, Raxis, Zaxis, Ψaxis)
     canvas._bnd = [@SVector[r[k], z[k]] for k in eachindex(r)]
     canvas._rextrema = extrema(r)

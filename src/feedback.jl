@@ -73,17 +73,8 @@ function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Re
 end
 
 function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    Rs, Zs, Ψpl, coils = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils
-    iso_cps, flux_cps, saddle_cps, λ_regularize = canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps, canvas.λ_regularize
-
-    Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
-    Ψpl = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
-    dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
-    dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
-    @views fixed_coils = coils[fixed]
-    @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
-    VacuumFields.find_coil_currents!(active_coils, Ψpl, dΨpl_dR, dΨpl_dZ; iso_cps, flux_cps, saddle_cps, fixed_coils, A=Acps, b_offset, λ_regularize)
-    set_Ψvac!(canvas)
+    iso_cps, flux_cps, saddle_cps = canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
+    fit_control_points!(canvas, fixed; iso_cps, flux_cps, saddle_cps, A=Acps, b_offset)
     return canvas
 end
 
@@ -122,6 +113,26 @@ function eddy_control!(canvas::Canvas)
         VacuumFields.set_current_per_turn!(coil, tmp[k])
     end
     set_Ψvac!(canvas)
+end
+
+
+function magnetics!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
+    loop_cps, flux_cps, field_cps = canvas.loop_cps, canvas.flux_cps, canvas.field_cps
+    fit_control_points!(canvas, fixed; iso_cps = loop_cps, flux_cps, field_cps, A=Acps, b_offset)
+    return canvas
+end
+
+function fit_control_points!(canvas::Canvas, fixed::AbstractVector{Int}; kwargs...)
+    Rs, Zs, Ψpl, coils, λ_regularize = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas.λ_regularize
+    Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
+    Ψpl_func = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
+    dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
+    dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
+    @views fixed_coils = coils[fixed]
+    @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
+    VacuumFields.find_coil_currents!(active_coils, Ψpl_func, dΨpl_dR, dΨpl_dZ; fixed_coils, λ_regularize, kwargs...)
+    set_Ψvac!(canvas)
+    return canvas
 end
 
 
@@ -169,5 +180,4 @@ function implicit_eddy!(canvas::Canvas, profile::AbstractCurrentProfile; relax::
     update_profile!(profile, canvas.Qsystem.Qstate; relax)
 
     set_Ψvac!(canvas)
-
 end
