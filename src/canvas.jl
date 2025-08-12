@@ -45,11 +45,11 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
                 coils=nothing, load_pf_active=true, load_pf_passive=true,
                 x_points_weight::Real=1.0, strike_points_weight::Real=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
+                reference_flux_loop_index::Int=1,
                 flux_loop_weights::AbstractVector{<:Real}=T[],
                 magnetic_probe_weights::AbstractVector{<:Real}=T[],
                 load_QED_system::Bool=false,
                 fixed_coils::Union{Nothing, Vector{Int}}=nothing,
-                reference_flux_loop_index::Int=1,
                 kwargs...) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
@@ -115,10 +115,12 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
 
     if !isempty(eqt.boundary)
         boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
-        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, Green_table, kwargs...)
+        Rb, Zb = collect(boundary.r), collect(boundary.z)
     else
-        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, T[], T[], iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, Green_table, kwargs...)
+        Rb, Zb = T[], T[]
     end
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb,  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, kwargs...)
+
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -318,10 +320,10 @@ end
                 canvas.saddle_cps
             end
             @series begin
-                canvas._field_cps
+                canvas.field_cps
             end
             @series begin
-                canvas._loop_cps
+                canvas.loop_cps
             end
         end
         @series begin

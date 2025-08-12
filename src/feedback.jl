@@ -135,7 +135,6 @@ function fit_control_points!(canvas::Canvas, fixed::AbstractVector{Int}; kwargs.
     return canvas
 end
 
-
 # Implicit eddy
 
 function update_profile!(profile::PressureJtoR, Qstate::QED.QED_state; relax::Real=1.0)

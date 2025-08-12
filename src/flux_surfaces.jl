@@ -17,9 +17,6 @@ function search_axis_guess(canvas::Canvas)
                 end
             end
         end
-        Rg, Zg = Rs[ia], Zs[ja]
-    else
-        Rg, Zg = canvas.Raxis, canvas.Zaxis
     end
     return Rs[ia], Zs[ja]
 end
