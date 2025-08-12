@@ -97,7 +97,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 
     if !converged && tolerance > 0.0
-        sum(debug) > 0 && @warn "FRESCO did not converged to $(error_outer) > $(tolerance) in $(Nout) iterations"
+        sum(debug) > 0 && @warn "FRESCO did not converge to $(error_outer) > $(tolerance) in $(Nout) iterations"
         return 1
     end
 
