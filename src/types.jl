@@ -1,7 +1,22 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
+@kwdef mutable struct QED_system{Qs<:QED.QED_state, F, Qb<:QED.QED_build, T<:Real, S<:Real}
+    Qstate::Qs
+    Qbuild::Qb
+    η::F
+    tmax::T = 0.0
+    Nt::Int = 1
+    Ip::MVector{2, S} = zeros(MVector{2, Float64})
+    Ic::Vector{Vector{S}}
+    Li::MVector{2, S} = zeros(MVector{2, Float64})
+    Le::MVector{2, S} = zeros(MVector{2, Float64})
+    Mpc::Vector{Vector{S}}
+    Rp::MVector{2, S} = zeros(MVector{2, Float64})
+    Vni::MVector{2, S} = zeros(MVector{2, Float64})
+end
+
 @kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
-                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
+                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit, Qs<:Union{Nothing, QED_system}}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Ψ::Matrix{T} = zeros(eltype(Rs), length(Rs), length(Zs))
@@ -24,6 +39,7 @@ const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf
     surfaces::Vector{IMAS.SimpleSurface{T}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
+    Qsystem::Qs = nothing
     λ_regularize::T = 1e-14
     _Ψpl::Matrix{T} = zero(Ψ)
     _Ψvac::Matrix{T} = zero(Ψ)
