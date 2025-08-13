@@ -1,19 +1,22 @@
-using Printf
+# Standard G-S solver
 function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
-                Rtarget = 0.5 * sum(extrema(canvas._Rb_target)),
-                Ztarget = canvas._Zb_target[argmax(canvas._Rb_target)],
+                Rtarget = 0.5 * sum(extrema(canvas.Rb_target)),
+                Ztarget = canvas.Zb_target[argmax(canvas.Rb_target)],
                 debug=0,
                 relax::Real=0.5,
                 tolerance::Real=0.0,
                 control::Union{Nothing, Symbol}=:shape,
-                fixed_coils::AbstractVector{Int}=canvas._fixed_coils,
-                initialize_current=true,
+                fixed_coils::AbstractVector{Int}=canvas.fixed_coils,
+                initialize_current::Bool=(all(iszero, canvas.Ψ) && control !== :eddy),
                 initialize_mutuals=(control === :eddy),
                 compute_Ip_from::Symbol=:fsa)
 
     @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy, :magnetics)
 
     if initialize_current
+        if control === :eddy
+            @warn "Eddy control should be used from existing equilibrium solution, so initialize_current should likely be false."
+        end
         J = (x,y) -> initial_current(canvas, x, y)
         gridded_Jtor!(canvas, J)
     else
@@ -21,9 +24,6 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 
     set_Ψvac!(canvas)
-    Ψ, Ψpl = canvas.Ψ, canvas._Ψpl
-    Ψt0 = deepcopy(Ψ)
-    Ψp0 = deepcopy(Ψpl)
 
     if initialize_mutuals
         set_mutuals!(canvas)
@@ -31,16 +31,34 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 
     if control in [:shape, :magnetics]
-        coils, flux_cps = canvas.coils, canvas._flux_cps
+        coils, flux_cps = canvas.coils, canvas.flux_cps
         ctrl_kwargs = (control === :shape) ?
-            (; flux_cps, iso_cps = canvas._iso_cps, saddle_cps = canvas._saddle_cps) :
-            (; flux_cps, iso_cps = canvas._loop_cps, field_cps = canvas._field_cps)
+            (; flux_cps, iso_cps = canvas.iso_cps, saddle_cps = canvas.saddle_cps) :
+            (; flux_cps, iso_cps = canvas.loop_cps, field_cps = canvas.field_cps)
         @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
         Acps = VacuumFields.define_A(active_coils; ctrl_kwargs...)
         b_offset = zeros(size(Acps, 1))
         fcs = @views coils[fixed_coils]
         VacuumFields.offset_b!(b_offset; fixed_coils=fcs, ctrl_kwargs...)
+
+        return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, control, compute_Ip_from, initialize_current, fixed_coils, Acps, b_offset)
+
+    elseif control in (:vertical, :radial, :position)
+        return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, control, compute_Ip_from, initialize_current, Rtarget, Ztarget)
+
+    else
+        return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, control, compute_Ip_from, initialize_current)
     end
+end
+
+# common solve
+function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
+                 debug, relax::Real, tolerance::Real, control::Union{Nothing, Symbol}, compute_Ip_from::Symbol,
+                 initialize_current::Bool=false, Rtarget=nothing, Ztarget=nothing, fixed_coils=nothing, Acps=nothing, b_offset=nothing)
+
+    Ψ, Ψpl = canvas.Ψ, canvas._Ψpl
+    Ψt0 = deepcopy(Ψ)
+    Ψp0 = deepcopy(Ψpl)
 
     sum(debug) > 0 && println("\t\tΨaxis\t\tΔΨ\t\tError")
     converged = false
@@ -102,4 +120,5 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 
     return 0
+
 end

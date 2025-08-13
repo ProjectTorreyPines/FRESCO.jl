@@ -1,75 +1,3 @@
-const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
-
-mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
-                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
-    Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    Ψ::Matrix{T}
-    Ip::T
-    Fbnd::T
-    coils::VC
-    Rw::Vector{T}
-    Zw::Vector{T}
-    Raxis::T
-    Zaxis::T
-    Ψaxis::T
-    Ψbnd::T
-    _Ψpl::Matrix{T}
-    _Ψvac::Matrix{T}
-    _Gvac::Array{T,3}
-    _Gbnd::Matrix{T}
-    _U::Matrix{T}
-    _Jt::Matrix{T}
-    _Ψitp::II
-    _bnd::Vector{SVector{2, T}}
-    _rextrema::Tuple{T,T}
-    _zextrema::Tuple{T,T}
-    _is_inside::Matrix{Bool}
-    _is_in_wall::Matrix{Bool}
-    _Rb_target::Vector{T}
-    _Zb_target::Vector{T}
-    _iso_cps::Vector{VacuumFields.IsoControlPoint{T}}
-    _flux_cps::Vector{VacuumFields.FluxControlPoint{T}}
-    _saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}}
-    _field_cps::Vector{VacuumFields.FieldControlPoint{T}}
-    _loop_cps::Vector{VacuumFields.IsoControlPoint{T}}
-    _vs_circuit::C1
-    _rs_circuit::C2
-    _Ψ_at_coils::Vector{T}
-    _tmp_Ncoils::Vector{T}
-    _fixed_coils::Vector{Int}
-    _mutuals::Matrix{T}
-    _mutuals_LU::LU{T, Matrix{T}, Vector{Int}}
-    _a::Vector{T}
-    _b::Vector{T}
-    _c::Vector{T}
-    _MST::Matrix{T}
-    _u::Matrix{T}
-    _A::Vector{T}
-    _B::Vector{T}
-    _M::Tridiagonal{T, Vector{T}}
-    _LU::LU{T, Tridiagonal{T, Vector{T}}, Vector{Int}}
-    _S::Matrix{T}
-    _tmp_Ψ::Matrix{T}
-    _surfaces::Vector{IMAS.SimpleSurface{T}}
-    _Vp::Vector{T}
-    _Vp_itp::DI
-    _gm1::Vector{T}
-    _gm1_itp::DI
-    _gm2p::Vector{T}
-    _gm2p_itp::DI
-    _gm9::Vector{T}
-    _gm9_itp::DI
-    _Fpol::Vector{T}
-    _Fpol_itp::DI
-    _rho::Vector{T}
-    _rho_itp::DI
-    _area::Vector{T}
-    _area_itp::DI
-    _r_cache::Vector{T}
-    _z_cache::Vector{T}
-end
-
 function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; kwargs...) where {T<:Real}
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
@@ -117,7 +45,8 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
                 reference_flux_loop_index::Int=1,
                 flux_loop_weights::AbstractVector{<:Real}=T[],
                 magnetic_probe_weights::AbstractVector{<:Real}=T[],
-                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
+                fixed_coils::Union{Nothing, Vector{Int}}=nothing,
+                kwargs...) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
 
@@ -145,22 +74,26 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     end
 
     # define coils
-    fixed_coils = Int[]
     if coils === nothing
         coils = VacuumFields.MultiCoils(dd; load_pf_active, load_pf_passive)
-        if load_pf_active
-            kpassive0 = length(dd.pf_active.coil)
-            for (k, coil) in enumerate(dd.pf_active.coil)
-                if :shaping ∉ (IMAS.index_2_name(coil.function)[f.index] for f in coil.function)
-                    push!(fixed_coils, k)
+        if fixed_coils === nothing
+            fixed_coils = Int[]
+            if load_pf_active
+                kpassive0 = length(dd.pf_active.coil)
+                for (k, coil) in enumerate(dd.pf_active.coil)
+                    if :shaping ∉ (IMAS.index_2_name(coil.function)[f.index] for f in coil.function)
+                        push!(fixed_coils, k)
+                    end
                 end
+            else
+                kpassive0 = 0
             end
-        else
-            kpassive0 = 0
+            if load_pf_passive
+                fixed_coils = vcat(fixed_coils, kpassive0 .+ eachindex(dd.pf_passive.loop))
+            end
         end
-        if load_pf_passive
-            fixed_coils = vcat(fixed_coils, kpassive0 .+ eachindex(dd.pf_passive.loop))
-        end
+    elseif fixed_coils === nothing
+        fixed_coils = Int[]
     end
 
     # define current and F at boundary
@@ -172,10 +105,12 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
 
     if !isempty(eqt.boundary)
         boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
-        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, collect(boundary.r), collect(boundary.z), iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+        Rb, Zb = collect(boundary.r), collect(boundary.z)
     else
-        canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, T[], T[], iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+        Rb, Zb = T[], T[]
     end
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb,  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, kwargs...)
+
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -203,12 +138,8 @@ function Canvas(Rs::AbstractRange{T},
                 saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
                 field_cps::Vector{VacuumFields.FieldControlPoint{T}},
                 loop_cps::Vector{VacuumFields.IsoControlPoint{T}};
-                fixed_coils::Vector{Int}=Int[],
-                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
-    Nr, Nz = length(Rs), length(Zs)
-    Ψ = zeros(T, Nr, Nz)
-    surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nr - 1)
-    return Canvas(Rs, Zs, Ψ, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Green_table)
+                kwargs...) where {T<:Real}
+    return Canvas(; Rs, Zs, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, kwargs...)
 end
 
 function Canvas(Rs::AbstractRange{T},
@@ -228,73 +159,26 @@ function Canvas(Rs::AbstractRange{T},
                 loop_cps::Vector{VacuumFields.IsoControlPoint{T}},
                 surfaces::Vector{<:IMAS.SimpleSurface};
                 fixed_coils::Vector{Int}=Int[],
-                Green_table::Array{T, 3}=T[;;;]) where {T<:Real}
+                Green_table::Array{T, 3}=VacuumFields.Green_table(Rs, Zs, coils),
+                kwargs...) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
-    @assert size(Ψ) == (Nr, Nz)
-    hr = Base.step(Rs)
+    @assert size(Ψ) == (Nr, Nz) "Ψ is incorrect size for Rs and Zs grid"
+    @assert size(Green_table) == (Nr, Nz, length(coils)) "Green_table is incorrect size for grid and coils"
 
-    R0, Z0 = 0.5 * (Rs[end] + Rs[1]), 0.5 * (Zs[end] + Zs[1])
-    dR, dZ = 0.5 * (Rs[end] - Rs[1]), 0.5 * (Zs[end] - Zs[1])
+    return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces, fixed_coils, Green_table, kwargs...)
+end
 
-    fout = 2.0
-    vs_coils = [VacuumFields.PointCoil(R0, Z0 + fout * dZ), VacuumFields.PointCoil(R0, Z0 - fout * dZ)]
-    vs_circuit = VacuumFields.SeriesCircuit(vs_coils, 0.0, [1, -1])
-    rs_coils = [VacuumFields.PointCoil(R0 + fout * dR, Z0 + dZ / 6), VacuumFields.PointCoil(R0 + fout * dR, Z0 - dZ / 6)]
-    rs_circuit = VacuumFields.SeriesCircuit(rs_coils, 0.0, [1, 1])
+function Canvas(canvas0::C; kwargs...) where {C <: Canvas}
+    # ── 1. current fields → NamedTuple ────────────────────────────────
+    names = fieldnames(C)
+    vals  = (getfield(canvas0, name) for name in names)
+    nt    = NamedTuple{names}(vals)
 
-    Nc = length(coils)
-    Ψ_at_coils = zeros(Nc)
-    tmp_Ncoils = zero(Ψ_at_coils)
-    mutuals = zeros(Nc, Nc) + LinearAlgebra.I
-    mutuals_LU = lu(mutuals)
+    # ── 2. merge: kwargs override existing entries ───────────────────
+    nt2 = (; nt..., kwargs...)
 
-    a = @. (1.0 + hr / (2Rs)) ^ -1
-    c = @. (1.0 - hr / (2Rs)) ^ -1
-    b = a + c
-    Ψpl = zero(Ψ)
-    Ψvac = zero(Ψ)
-    if isempty(Green_table)
-        Gvac = VacuumFields.Green_table(Rs, Zs, coils)
-    else
-        @assert size(Green_table) == (Nr, Nz, Nc) "Green_table is incorrect size for grid and coils"
-        Gvac = Green_table
-    end
-    Gbnd = compute_Gbnd(Rs, Zs)
-    U = zero(Ψ)
-    Jt = zero(Ψ)
-    Ψitp = ψ_interpolant(Rs, Zs, Ψ)
-    is_inside = Matrix{Bool}(undef, size(Ψ))
-    Wpts = collect(zip(Rw, Zw))
-    is_in_wall = [(FRESCO.inpolygon((r, z), Wpts) == 1) for r in Rs, z in Zs]
-    u = zero(Ψ)
-    A = zero(Rs)
-    B = zero(Rs)
-    MST = [sqrt(2 / (Nz - 1)) * sin(π * j * k / (Nz - 1)) for j in 0:(Nz-1), k in 0:(Nz-1)]
-    M = Tridiagonal(zeros(T, Nr-1), ones(T, Nr), zeros(T, Nr-1))  # fill with ones so I can allocate lu Array
-    LU = lu(M)
-    M .= 0.0 # reset
-    S = zero(Ψ)
-    tmp_Ψ = zero(Ψ)
-    zt = zero(T)
-    x = range(0, 1, length(surfaces))
-    Vp  = zero(x)
-    gm1 = zero(x)
-    gm2p = zero(x)
-    gm9 = zero(x)
-    Fpol = zero(x)
-    rho = zero(x)
-    area = zero(x)
-    zitp = DataInterpolations.CubicSpline(zero(x), x; extrapolation=ExtrapolationType.None)
-
-
-    r_cache, z_cache = IMASutils.contour_cache(Ψ; aggression_level=3)
-    return Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, zt, zt, zt, zt, Ψpl, Ψvac, Gvac, Gbnd, U, Jt, Ψitp,
-                  SVector{2,T}[], (0.0, 0.0), (0.0, 0.0), is_inside, is_in_wall, Rb_target, Zb_target,
-                  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps,
-                  vs_circuit, rs_circuit, Ψ_at_coils, tmp_Ncoils, fixed_coils, mutuals, mutuals_LU, a, b, c, MST, u,
-                  A, B, M, LU, S, tmp_Ψ,
-                  surfaces, Vp, deepcopy(zitp), gm1, deepcopy(zitp), gm2p, deepcopy(zitp), gm9, deepcopy(zitp),
-                  Fpol, deepcopy(zitp), rho, deepcopy(zitp), area, deepcopy(zitp), r_cache, z_cache)
+    # ── 3. build the new Canvas via the @kwdef constructor ───────────
+    return Canvas(; nt2...)
 end
 
 function bnd2mat(Nr::Int, Nz::Int, k::Int)
@@ -411,24 +295,24 @@ end
                 linewidth --> 3
                 linestyle --> :solid
                 c --> :limegreen
-                canvas._Rb_target, canvas._Zb_target
+                canvas.Rb_target, canvas.Zb_target
             end
         end
         if plot_control_points
             @series begin
-                canvas._iso_cps
+                canvas.iso_cps
             end
             @series begin
-                canvas._flux_cps
+                canvas.flux_cps
             end
             @series begin
-                canvas._saddle_cps
+                canvas.saddle_cps
             end
             @series begin
-                canvas._field_cps
+                canvas.field_cps
             end
             @series begin
-                canvas._loop_cps
+                canvas.loop_cps
             end
         end
         @series begin
