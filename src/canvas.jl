@@ -116,7 +116,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     else
         Rb, Zb = T[], T[]
     end
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb,  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, kwargs...)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, kwargs...)
 
 
     set_Ψvac!(canvas)
