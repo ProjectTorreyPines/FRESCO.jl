@@ -51,37 +51,6 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 end
 
-
-# Implicit, time-dependent solver
-function implicit_solve!(canvas::Canvas, pressure::DataInterpolations.AbstractInterpolation, Nout::Int, Nin::Int, tmax::Real, Nt::Int;
-                         debug=0,
-                         relax::Real=0.5,
-                         tolerance::Real=0.0,
-                         V_waveforms::Vector{<:QED.Waveform}=canvas.Qsystem.Qbuild.V_waveforms,
-                         preprocess_canvas::Bool=true,
-                         compute_Ip_from::Symbol=:fsa)
-
-    @assert !isnothing(canvas.Qsystem)
-
-    # build JtoR profile from Qstate
-    Qstate = canvas.Qsystem.Qstate
-    x = Qstate.ρ
-    JtoR = DataInterpolations.CubicSpline(QED.Jt_R(Qstate), x; extrapolation=ExtrapolationType.Extension)
-    profile = PressureJtoR(pressure, JtoR, :rho_tor_norm)
-
-    # Setup the Qsystem
-    setup_Qsystem!(canvas, profile; tmax, Nt, V_waveforms, preprocess_canvas, compute_Ip_from)
-
-    # get mutual matrix from Qbuild
-    canvas._mutuals .= canvas.Qsystem.Qbuild.Mcc
-
-    # initialize vacuum fields
-    set_Ψvac!(canvas)
-
-    return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, control=:implicit, compute_Ip_from)
-end
-
-
 # common solve
 function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
                  debug, relax::Real, tolerance::Real, control::Union{Nothing, Symbol}, compute_Ip_from::Symbol,
@@ -127,18 +96,11 @@ function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin
             eddy_control!(canvas)
         elseif control === :magnetics
             magnetics!(canvas, fixed_coils, Acps, b_offset)
-        elseif control === :implicit
-            implicit_eddy!(canvas, profile; relax)
         end
 
         sync_Ψ!(canvas; update_Ψitp=true)
         update_bounds!(canvas; update_Ψitp=false)
         Jtor!(canvas, profile; update_surfaces, compute_Ip_from)
-
-        if control === :implicit
-            # now that we have a new solution, update the forward time of QED_system
-            update_Qsystem!(canvas, profile)
-        end
 
         error_outer = abs((canvas.Ψaxis - Ψa0) / (relax * Ψa0))
         if sum(debug) > 0

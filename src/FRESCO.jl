@@ -14,7 +14,6 @@ import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
 using Plots
 using LoopVectorization: @turbo, @tturbo
-import QED
 using Printf
 
 const μ₀ = π * 4e-7
@@ -26,7 +25,6 @@ include("current.jl")
 include("flux.jl")
 include("flux_surfaces.jl")
 include("GSsolve.jl")
-include("qed.jl")
 include("feedback.jl")
 include("workflow.jl")
 
