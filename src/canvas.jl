@@ -45,6 +45,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
                 reference_flux_loop_index::Int=1,
                 flux_loop_weights::AbstractVector{<:Real}=T[],
                 magnetic_probe_weights::AbstractVector{<:Real}=T[],
+                load_QED_system::Bool=false,
                 fixed_coils::Union{Nothing, Vector{Int}}=nothing,
                 kwargs...) where {T<:Real}
 
@@ -103,13 +104,15 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
+    Qsystem = load_QED_system ? QED_system(dd, coils) : nothing
+
     if !isempty(eqt.boundary)
         boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
         Rb, Zb = collect(boundary.r), collect(boundary.z)
     else
         Rb, Zb = T[], T[]
     end
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb,  iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, kwargs...)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, Qsystem, kwargs...)
 
 
     set_Ψvac!(canvas)
@@ -160,12 +163,13 @@ function Canvas(Rs::AbstractRange{T},
                 surfaces::Vector{<:IMAS.SimpleSurface};
                 fixed_coils::Vector{Int}=Int[],
                 Green_table::Array{T, 3}=VacuumFields.Green_table(Rs, Zs, coils),
+                Qsystem::Union{Nothing, QED_system}=nothing,
                 kwargs...) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     @assert size(Ψ) == (Nr, Nz) "Ψ is incorrect size for Rs and Zs grid"
     @assert size(Green_table) == (Nr, Nz, length(coils)) "Green_table is incorrect size for grid and coils"
 
-    return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces, fixed_coils, Green_table, kwargs...)
+    return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, surfaces, fixed_coils, Green_table, Qsystem, kwargs...)
 end
 
 function Canvas(canvas0::C; kwargs...) where {C <: Canvas}
