@@ -104,11 +104,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     Nsurfaces = !ismissing(eqt.profiles_1d, :psi) ? length(eqt.profiles_1d.psi) : 129
     surfaces = Vector{IMAS.SimpleSurface{T}}(undef, Nsurfaces)
 
-    if load_QED_system
-        Qsystem = QED_system(dd, coils)
-    else
-        Qsystem = nothing
-    end
+    Qsystem = load_QED_system ? QED_system(dd, coils) : nothing
 
     if !isempty(eqt.boundary)
         boundary = IMAS.closed_polygon(eqt.boundary.outline.r, eqt.boundary.outline.z)
