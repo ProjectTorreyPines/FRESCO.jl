@@ -282,3 +282,13 @@ function set_flux_at_coils!(canvas::Canvas)
     end
     return canvas
 end
+
+function evolve_flux_at_coils!(canvas::Canvas, coil_states::Vector{<:CoilState}, Δt::Real)
+    Ψ_at_coils = canvas._Ψ_at_coils
+    for (k, cs) in enumerate(coil_states)
+        cs = coil_states[k]
+        Ic = 0.5 * sum(cs.current_per_turn)
+        Ψ_at_coils[k] = cs.flux[2] = cs.flux[1] + Δt * (cs.voltage - cs.resistance * Ic)
+    end
+    return
+end

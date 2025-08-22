@@ -95,7 +95,7 @@ function set_mutuals!(canvas::Canvas)
     return canvas
 end
 
-function eddy_control!(canvas::Canvas)
+function eddy_control!(canvas::Canvas, coil_states::Union{Nothing, Vector{<:CoilState}})
     coils, Ψ_at_coils, tmp, mutuals_LU = canvas.coils, canvas._Ψ_at_coils, canvas._tmp_Ncoils, canvas._mutuals_LU
     gridded_Jtor!(canvas)
 
@@ -111,6 +111,11 @@ function eddy_control!(canvas::Canvas)
     tmp .*= -1
     for (k, coil) in enumerate(coils)
         VacuumFields.set_current_per_turn!(coil, tmp[k])
+    end
+    if coil_states !== nothing
+        for (k, cs) in enumerate(coil_states)
+            cs.current_per_turn[2] = tmp[k]
+        end
     end
     set_Ψvac!(canvas)
 end

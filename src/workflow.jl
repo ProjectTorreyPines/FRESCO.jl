@@ -8,7 +8,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
                 control::Union{Nothing, Symbol}=:shape,
                 fixed_coils::AbstractVector{Int}=canvas.fixed_coils,
                 initialize_current::Bool=(all(iszero, canvas.Ψ) && control !== :eddy),
-                initialize_mutuals=(control === :eddy),
+                initialize_mutuals::Bool=(control === :eddy),
                 compute_Ip_from::Symbol=:fsa)
 
     @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy, :magnetics)
@@ -51,9 +51,33 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
     end
 end
 
+# Time-evolution G-S solver
+function evolve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int, Δt::Real;
+                voltages::AbstractVector{<:Real} = zeros(eltype(canvas.Rs), length(canvas.coils)),
+                debug=0,
+                relax::Real=0.5,
+                tolerance::Real=0.0,
+                initialize_mutuals::Bool=true,
+                compute_Ip_from::Symbol=:fsa)
+
+    @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy, :magnetics)
+
+    update_bounds!(canvas; update_Ψitp=true)
+    Jtor!(canvas, profile; update_surfaces=true, compute_Ip_from)
+    set_Ψvac!(canvas)
+    initialize_mutuals && set_mutuals!(canvas)
+    set_flux_at_coils!(canvas)
+
+    coil_states = VacuumFields.CoilState.(canvas.coils; initial_flux=canvas._Ψ_at_coils, voltage=voltages)
+
+    return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, Δt, coil_states, control=:eddy, compute_Ip_from, initialize_current=false)
+end
+
 # common solve
 function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin::Int;
-                 debug, relax::Real, tolerance::Real, control::Union{Nothing, Symbol}, compute_Ip_from::Symbol,
+                 debug, relax::Real, tolerance::Real,
+                 Δt::Real=0.0, coil_states::Union{Nothing, Vector{<:CoilState}} = nothing,
+                 control::Union{Nothing, Symbol}, compute_Ip_from::Symbol,
                  initialize_current::Bool=false, Rtarget=nothing, Ztarget=nothing, fixed_coils=nothing, Acps=nothing, b_offset=nothing)
 
     Ψ, Ψpl = canvas.Ψ, canvas._Ψpl
@@ -93,7 +117,13 @@ function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin
         elseif control === :position
             axis_feedback!(canvas, Rtarget, Ztarget, 0.5)
         elseif control === :eddy
-            eddy_control!(canvas)
+            Δt > 0.0 && evolve_flux_at_coils!(canvas, coil_states, Δt)
+            eddy_control!(canvas, coil_states)
+            if Δt > 0.0
+                for (k, cs) in enumerate(coil_states)
+                    cs.current_per_turn[2] = VacuumFields.current_per_turn(canvas.coils[k])
+                end
+            end
         elseif control === :magnetics
             magnetics!(canvas, fixed_coils, Acps, b_offset)
         end
