@@ -20,7 +20,8 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         J = (x,y) -> initial_current(canvas, x, y)
         gridded_Jtor!(canvas, J)
     else
-        gridded_Jtor!(canvas)
+        update_bounds!(canvas; update_Ψitp=true)
+        Jtor!(canvas, profile; update_surfaces=true, compute_Ip_from)
     end
 
     set_Ψvac!(canvas)
@@ -60,15 +61,13 @@ function evolve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin
                 initialize_mutuals::Bool=true,
                 compute_Ip_from::Symbol=:fsa)
 
-    @assert control in (nothing, :shape, :vertical, :radial, :position, :eddy, :magnetics)
-
     update_bounds!(canvas; update_Ψitp=true)
     Jtor!(canvas, profile; update_surfaces=true, compute_Ip_from)
     set_Ψvac!(canvas)
     initialize_mutuals && set_mutuals!(canvas)
     set_flux_at_coils!(canvas)
 
-    coil_states = VacuumFields.CoilState.(canvas.coils; initial_flux=canvas._Ψ_at_coils, voltage=voltages)
+    coil_states = [CoilState(canvas.coils[k]; initial_flux=canvas._Ψ_at_coils[k], voltage=voltages[k]) for k in eachindex(canvas.coils)]
 
     return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, Δt, coil_states, control=:eddy, compute_Ip_from, initialize_current=false)
 end
