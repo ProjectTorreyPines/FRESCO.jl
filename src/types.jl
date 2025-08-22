@@ -8,10 +8,10 @@ const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf
 end
 
 function CoilState(coil; initial_flux::T=0.0, voltage::T=0.0) where {T <: Real}
-    return CoilState(; flux = MVector{2, T}(initial_flux, zero(T)),
-                       current_per_turn = MVector{2, T}(VacuumFields.current_per_turn(coil), zero(T)),
-                       voltage,
-                       resistance = VacuumFields.resistance(coil))
+    flux = MVector{2, T}(initial_flux, zero(T))
+    current_per_turn = MVector{2, T}(VacuumFields.current_per_turn(coil), zero(T))
+    resistance = VacuumFields.resistance(coil)
+    return CoilState(; flux, current_per_turn, voltage, resistance)
 end
 
 

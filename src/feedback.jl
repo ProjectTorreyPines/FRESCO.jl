@@ -97,7 +97,6 @@ end
 
 function eddy_control!(canvas::Canvas, coil_states::Union{Nothing, Vector{<:CoilState}})
     coils, Ψ_at_coils, tmp, mutuals_LU = canvas.coils, canvas._Ψ_at_coils, canvas._tmp_Ncoils, canvas._mutuals_LU
-    gridded_Jtor!(canvas)
 
     # tmp is flux from coils at each coil
     tmp .= Ψ_at_coils
