@@ -219,19 +219,21 @@ end
 
 check_grid(grid::Symbol) = @assert grid in (:psi_norm, :rho_tor_norm)
 
-function get_x(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real)
-    if profile.grid === :psi_norm
+get_x(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real) = get_x(psin, profile.grid, canvas._rho_itp)
+function get_x(psin::Real, grid::Symbol, rho_itp::DataInterpolations.AbstractInterpolation)
+    if grid === :psi_norm
         return psin
-    elseif profile.grid === :rho_tor_norm
-        return canvas._rho_itp(psin)
+    elseif grid === :rho_tor_norm
+        return rho_itp(psin)
     end
 end
 
-function dx_dpsin(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real)
-    if profile.grid === :psi_norm
+dx_dpsin(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real) = dx_dpsin(psin, profile.grid, canvas._rho_itp)
+function dx_dpsin(psin::Real, grid::Symbol, rho_itp::DataInterpolations.AbstractInterpolation)
+    if grid === :psi_norm
         return 1.0
-    elseif profile.grid === :rho_tor_norm
-        return DataInterpolations.derivative(canvas._rho_itp, psin) # drho_dpsin
+    elseif grid === :rho_tor_norm
+        return DataInterpolations.derivative(rho_itp, psin) # drho_dpsin
     end
 end
 
@@ -261,10 +263,12 @@ end
 function Pprime(canvas::Canvas, profile::PprimeFFprime, psin::Real, x::Real=get_x(canvas, profile, psin))
     return profile.pprime(x)
 end
+Pprime(profile::PprimeFFprime, x::Real) = profile.pprime(x)
 
 function FFprime(canvas::Canvas, profile::PprimeFFprime, psin::Real, x::Real=get_x(canvas, profile, psin))
     profile.ffprime(x) * profile.ffp_scale
 end
+FFprime(profile::PprimeFFprime, x::Real) = profile.ffprime(x) * profile.ffp_scale
 
 function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real, x::Real=get_x(canvas, profile, psin);
               gm1=canvas._gm1_itp(psin))
@@ -272,7 +276,8 @@ function JtoR(canvas::Canvas, profile::AbstractCurrentProfile, psin::Real, x::Re
 end
 
 function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, compute_Ip_from::Symbol)
-    Rs, Zs, Ψ, Ip, Jt, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Jt, canvas._is_inside
+    Rs, Zs, Ψ, Ip, Jt, is_inside, rho_itp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._Jt, canvas._is_inside, canvas._rho_itp
+    Ψaxis, Ψbnd = canvas.Ψaxis, canvas.Ψbnd
     Jt .= 0.0
 
     @assert compute_Ip_from in (:grid, :fsa)
@@ -282,9 +287,9 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
         for (i,R) in enumerate(Rs)
             for j in eachindex(Zs)
                 if is_inside[i, j]
-                    psin = psinorm(Ψ[i, j], canvas)
-                    x = get_x(canvas, profile, psin)
-                    Jt[i, j] = -twopi * FFprime(canvas, profile, psin, x) / (R * μ₀)
+                    psin = psinorm(Ψ[i, j], Ψaxis, Ψbnd)
+                    x = get_x(psin, profile.grid, rho_itp)
+                    Jt[i, j] = -twopi * FFprime(profile, x) / (R * μ₀)
                 end
             end
         end
@@ -294,9 +299,9 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
         for (i,R) in enumerate(Rs)
             for j in eachindex(Zs)
                 if is_inside[i, j]
-                    psin = psinorm(Ψ[i, j], canvas)
-                    x = get_x(canvas, profile, psin)
-                    Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin, x)
+                    psin = psinorm(Ψ[i, j], Ψaxis, Ψbnd)
+                    x = get_x(psin, profile.grid, rho_itp)
+                    Jt[i, j] += -twopi * R * Pprime(profile, x)
                 end
             end
         end
@@ -328,9 +333,9 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
     for (i,R) in enumerate(Rs)
         for j in eachindex(Zs)
             if is_inside[i, j]
-                psin = psinorm(Ψ[i, j], canvas)
-                x = get_x(canvas, profile, psin)
-                Jt[i, j] = -twopi * (R * Pprime(canvas, profile, psin, x) + FFprime(canvas, profile, psin, x) / (R * μ₀))
+                psin = psinorm(Ψ[i, j], Ψaxis, Ψbnd)
+                x = get_x(psin, profile.grid, rho_itp)
+                Jt[i, j] = -twopi * (R * Pprime(profile, x) + FFprime(profile, x) / (R * μ₀))
             end
         end
     end
@@ -401,6 +406,10 @@ function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::
     dpsin_dΨ = 1.0 / (canvas.Ψbnd - canvas.Ψaxis)
     return dP_dx * dx_dpsin(canvas, profile, psin) * dpsin_dΨ
 end
+function Pprime(profile::Union{PressureJtoR, PressureJt}, x::Real, dx_dpsin::Real, Ψbnd::Real, Ψaxis::Real)
+    dP_dx = DataInterpolations.derivative(profile.pressure, x)
+    return dP_dx * dx_dpsin / (Ψbnd - Ψaxis)
+end
 
 function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real, x::Real=get_x(canvas, profile, psin);
                  gm1=canvas._gm1_itp(psin))
@@ -409,13 +418,15 @@ function FFprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin:
 end
 
 function JtoR(canvas::Canvas, profile::PressureJtoR, psin::Real, x::Real=get_x(canvas, profile, psin))
-    return profile.J_scale * profile.JtoR(x)
+    return JtoR(profile, x)
 end
+JtoR(profile::PressureJtoR, x::Real) = profile.J_scale * profile.JtoR(x)
 
 function JtoR(canvas::Canvas, profile::PressureJt, psin::Real, x::Real=get_x(canvas, profile, psin);
               gm9=canvas._gm9_itp(psin))
-    return profile.J_scale * profile.Jt(x) * gm9
+    return JtoR(profile, x, gm9)
 end
+JtoR(profile::PressureJt, x::Real, gm9::Real) = profile.J_scale * profile.Jt(x) * gm9
 
 function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_surfaces::Bool, compute_Ip_from::Symbol)
     Rs, Zs, Ψ, Ip = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip

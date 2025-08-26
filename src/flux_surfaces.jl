@@ -64,7 +64,8 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     end
 end
 
-psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
+psinorm(psi::Real, canvas::Canvas) = psinorm(psi, canvas.Ψaxis, canvas.Ψbnd)
+psinorm(psi::Real, Ψaxis::Real, Ψbnd::Real) = (psi - Ψaxis) / (Ψbnd - Ψaxis)
 psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 
 function boundary!(canvas::Canvas)
@@ -90,11 +91,11 @@ function update_bounds!(canvas; update_Ψitp::Bool=true)
     return canvas
 end
 
-function in_plasma_bb(r::Real, z::Real, canvas::Canvas)
-    rmin, rmax = canvas._rextrema
+function in_plasma_bb(r::Real, z::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real})
+    rmin, rmax = rext
     (r < rmin || r > rmax) && return false
 
-    zmin, zmax = canvas._zextrema
+    zmin, zmax = zext
     (z < zmin || z > zmax) && return false
 
     return true
@@ -102,17 +103,22 @@ end
 
 function in_core(r::Real, z::Real, psin::Real, canvas::Canvas,
     ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    rext, zext, bnd = canvas._rextrema, canvas._zextrema, canvas._bnd
+    return in_core(r, z, psin, rext, zext, bnd, ellipse)
+end
 
+function in_core(r::Real, z::Real, psin::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real},
+    bnd::Vector{<:SVector{2,<:Real}}, ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
     # Check psinorm value
     psin > 1.0 && return false
 
     # Check outside bounding box
-    !in_plasma_bb(r, z, canvas) && return false
+    !in_plasma_bb(r, z, rext, zext) && return false
 
     in_ellipse(r, z, ellipse) && return true
 
     # Finally make sure it's in the boundary
-    return inpolygon((r, z), canvas._bnd) == 1
+    return inpolygon((r, z), bnd) == 1
 end
 
 in_ellipse(r, z, ellipse::Nothing) = false
@@ -123,8 +129,8 @@ function in_ellipse(r::Real, z::Real, ellipse::AbstractVector{<:Real})
     return ((r - R0) / a)^2 + ((z - Z0) / b)^2 <= 1.0
 end
 
-function compute_ellipse(canvas::Canvas)
-    bnd, rext, zext = canvas._bnd, canvas._rextrema, canvas._zextrema
+compute_ellipse(canvas::Canvas) = compute_ellipse(canvas._bnd, canvas._rextrema, canvas._zextrema)
+function compute_ellipse(bnd, rext, zext)
     κ = (zext[2] - zext[1]) / (rext[2] - rext[1])
     R0, Z0 = centroid(bnd)
     radius = p -> sqrt((p[1] - R0)^2 + ((p[2] - Z0) / κ)^2)
