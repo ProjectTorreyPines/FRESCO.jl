@@ -1,5 +1,3 @@
-const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
-
 @kwdef mutable struct CoilState{T}
     flux::MVector{2, T} = zeros(MVector{2, Float64})
     current_per_turn::MVector{2, T} = zeros(MVector{2, Float64})
@@ -15,20 +13,20 @@ function CoilState(coil; initial_flux::T=0.0, voltage::T=0.0) where {T <: Real}
 end
 
 
-@kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
+@kwdef mutable struct Canvas{T<:Real, DT<:Real, VC<:Vector{<:VacuumFields.AbstractCoil}, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
                       C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    Ψ::Matrix{T} = zeros(eltype(Rs), length(Rs), length(Zs))
-    Ip::T
-    Fbnd::T
+    Ψ::Matrix{DT} = zeros(eltype(Rs), length(Rs), length(Zs))
+    Ip::DT
+    Fbnd::DT
     coils::VC
     Rw::Vector{T}
     Zw::Vector{T}
-    Raxis::T = zero(Ip)
-    Zaxis::T = zero(Ip)
-    Ψaxis::T = zero(Ip)
-    Ψbnd::T = zero(Ip)
+    Raxis::DT = zero(Ip)
+    Zaxis::DT = zero(Ip)
+    Ψaxis::DT = zero(Ip)
+    Ψbnd::DT = zero(Ip)
     Rb_target::Vector{T}
     Zb_target::Vector{T}
     iso_cps::Vector{VacuumFields.IsoControlPoint{T}} = VacuumFields.IsoControlPoint{eltype(Rs)}[]
@@ -36,54 +34,54 @@ end
     saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}} = VacuumFields.SaddleControlPoint{eltype(Rs)}[]
     field_cps::Vector{VacuumFields.FieldControlPoint{T}} = VacuumFields.FieldControlPoint{eltype(Rs)}[]
     loop_cps::Vector{VacuumFields.IsoControlPoint{T}} = VacuumFields.IsoControlPoint{eltype(Rs)}[]
-    surfaces::Vector{IMAS.SimpleSurface{T}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
+    surfaces::Vector{IMAS.SimpleSurface{DT}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
     λ_regularize::T = 1e-14
-    _Ψpl::Matrix{T} = zero(Ψ)
-    _Ψvac::Matrix{T} = zero(Ψ)
+    _Ψpl::Matrix{DT} = zero(Ψ)
+    _Ψvac::Matrix{DT} = zero(Ψ)
     _Gbnd::Matrix{T} = compute_Gbnd(Rs, Zs)
-    _U::Matrix{T} = zero(Ψ)
-    _Jt::Matrix{T} = zero(Ψ)
+    _U::Matrix{DT} = zero(Ψ)
+    _Jt::Matrix{DT} = zero(Ψ)
     _Ψitp::II = ψ_interpolant(Rs, Zs, Ψ)
-    _bnd::Vector{SVector{2, T}} = SVector{2,eltype(Rs)}[]
-    _rextrema::Tuple{T,T} = (zero(Ip), zero(Ip))
-    _zextrema::Tuple{T,T} = (zero(Ip), zero(Ip))
+    _bnd::Vector{SVector{2, DT}} = SVector{2,eltype(Rs)}[]
+    _rextrema::Tuple{DT,DT} = (zero(Ip), zero(Ip))
+    _zextrema::Tuple{DT,DT} = (zero(Ip), zero(Ip))
     _is_inside::Matrix{Bool} = Matrix{Bool}(undef, size(Ψ))
     _is_in_wall::Matrix{Bool} = default_is_in_wall(Rs, Zs, Rw, Zw)
     _vs_circuit::C1 = default_vs_circuit(Rs, Zs)
     _rs_circuit::C2 = default_rs_circuit(Rs, Zs)
-    _Ψ_at_coils::Vector{T} = zeros(eltype(Rs), length(coils))
-    _tmp_Ncoils::Vector{T} = zeros(eltype(Rs), length(coils))
+    _Ψ_at_coils::Vector{DT} = zeros(eltype(Rs), length(coils))
+    _tmp_Ncoils::Vector{DT} = zeros(eltype(Rs), length(coils))
     _mutuals::Matrix{T} = Matrix{eltype(Rs)}(LinearAlgebra.I, length(coils), length(coils))
     _mutuals_LU::LU{T, Matrix{T}, Vector{Int}} = lu(_mutuals)
     _a::Vector{T} =  1.0 ./ (1.0 .+ Base.step(Rs) ./ (2 .* Rs))
     _c::Vector{T} =  1.0 ./ (1.0 .- Base.step(Rs) ./ (2 .* Rs))
     _b::Vector{T} = _a .+ _c
     _MST::Matrix{T} = default_MST(Zs)
-    _u::Matrix{T} = zero(Ψ)
-    _A::Vector{T} = zero(Rs)
-    _B::Vector{T} = zero(Rs)
+    _u::Matrix{DT} = zero(Ψ)
+    _A::Vector{DT} = zero(Rs)
+    _B::Vector{DT} = zero(Rs)
     _M::Tridiagonal{T, Vector{T}} = default_M(Rs)
     _LU::LU{T, Tridiagonal{T, Vector{T}}, Vector{Int}} = default_LU(Rs)
-    _S::Matrix{T} = zero(Ψ)
-    _tmp_Ψ::Matrix{T} = zero(Ψ)
-    _Vp::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _S::Matrix{DT} = zero(Ψ)
+    _tmp_Ψ::Matrix{DT} = zero(Ψ)
+    _Vp::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _Vp_itp::DI = default_itp(surfaces)
-    _gm1::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _gm1::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _gm1_itp::DI = default_itp(surfaces)
-    _gm2p::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _gm2p::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _gm2p_itp::DI = default_itp(surfaces)
-    _gm9::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _gm9::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _gm9_itp::DI = default_itp(surfaces)
-    _Fpol::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _Fpol::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _Fpol_itp::DI = default_itp(surfaces)
-    _rho::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _rho::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _rho_itp::DI = default_itp(surfaces)
-    _area::Vector{T} = zeros(eltype(Rs), length(surfaces))
+    _area::Vector{DT} = zeros(eltype(Rs), length(surfaces))
     _area_itp::DI = default_itp(surfaces)
-    _r_cache::Vector{T} = IMASutils.contour_cache(Ψ; aggression_level=3)[1]
-    _z_cache::Vector{T} = IMASutils.contour_cache(Ψ; aggression_level=3)[2]
+    _r_cache::Vector{DT} = IMASutils.contour_cache(Ψ; aggression_level=3)[1]
+    _z_cache::Vector{DT} = IMASutils.contour_cache(Ψ; aggression_level=3)[2]
 end
 
 function default_vs_circuit(Rs, Zs)

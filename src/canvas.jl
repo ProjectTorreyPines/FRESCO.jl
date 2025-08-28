@@ -128,7 +128,7 @@ function Canvas(Rs::AbstractRange{T},
                 Zs::AbstractRange{T},
                 Ip::T,
                 Fbnd::T,
-                coils::CoilVectorType,
+                coils::Vector{<:VacuumFields.AbstractCoil},
                 Rw::Vector{T},
                 Zw::Vector{T},
                 Rb_target::Vector{T},
@@ -147,7 +147,7 @@ function Canvas(Rs::AbstractRange{T},
                 Ψ::Matrix{T},
                 Ip::T,
                 Fbnd::T,
-                coils::CoilVectorType,
+                coils::Vector{<:VacuumFields.AbstractCoil},
                 Rw::Vector{T},
                 Zw::Vector{T},
                 Rb_target::Vector{T},
@@ -227,7 +227,6 @@ end
 const ITP = Interpolations
 function ψ_interpolant(r, z, psi)
     return ITP.scale(ITP.interpolate(psi, ITP.BSpline(ITP.Cubic(ITP.Line(ITP.OnGrid())))), r, z)
-    #Interpolations.cubic_spline_interpolation((r, z), psi; extrapolation_bc=Interpolations.Line())
 end
 
 # This gets into the weeds of how Interpolations works to eliminate some unnecessary allocation in prefilter()

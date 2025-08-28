@@ -15,12 +15,14 @@ using RecipesBase
 using Plots
 using LoopVectorization: @turbo, @tturbo
 using Printf
+import ForwardDiff: ForwardDiff, Dual
 
 const μ₀ = π * 4e-7
 const twopi = 2π
 
 include("types.jl")
 include("canvas.jl")
+include("nonlinear.jl")
 include("current.jl")
 include("flux.jl")
 include("flux_surfaces.jl")
