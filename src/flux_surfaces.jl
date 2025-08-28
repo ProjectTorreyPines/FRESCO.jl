@@ -1,3 +1,7 @@
+# Helper for constructing Duals with correct tag
+dual_with_partials_like(like_el, value::Real, partials::AbstractVector{<:Real}) =
+    ForwardDiff.Dual{ForwardDiff.tagtype(like_el)}(value, Tuple(partials))
+
 function search_axis_guess(canvas::Canvas)
     Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
     psisign = sign(Ip)
@@ -24,8 +28,6 @@ end
 
 function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
-    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
-    psisign = sign(Ip)
 
     # find initial guess
     Rg, Zg = try
@@ -41,8 +43,61 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
             error("Could not find magnetic axis guess from grid and no previous axis location available")
         end
     end
+
+    return _find_axis(canvas, Rg, Zg)
+end
+
+function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
+    # Float path
+    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
+    psisign = sign(Ip)
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+end
+
+function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:ForwardDiff.Dual, VC, II, DI, C1, C2}
+     # Dual number path: use implicit differentiation
+    Rs, Zs, Ip, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas.Ψ, canvas._Ψitp
+    psisign = sign(ForwardDiff.value(Ip))
+
+    # 1) Strip duals and solve with Float interpolant
+    ψ_val = ForwardDiff.value.(Ψ)
+    itp_val = ψ_interpolant(Rs, Zs, ψ_val)
+    RAf, ZAf = IMAS.find_magnetic_axis(Rs, Zs, itp_val, psisign; rguess=Rg, zguess=Zg)
+
+    # 2) Compute Hessian wrt (r,z) at float axis
+    H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])
+    # light diagonal regularization
+    H[1,1] += 1e-9
+    H[2,2] += 1e-9
+
+    # 3)Compute gradient at axis (w.r.t. Ψ)
+    # Use the spline's analytic gradient; returns Duals because coefficients are Dual
+    g_dual = Interpolations.gradient(Ψitp, RAf, ZAf)
+    # NOTE: g_dual is a length-2 Tuple of Duals; its partials encode ∂∇_x f / ∂Ψ · δΨ
+
+    # 4) Extract sensitivities for each AD direction
+    el = Ψ[1, 1]  # any psi element to read AD tag/width
+    K = ForwardDiff.npartials(el)
+    vcols = Vector{Vector{Float64}}(undef, K)
+    for k in 1:K
+        v = Vector{Float64}(undef, 2)
+        @inbounds begin
+            v[1] = ForwardDiff.partials(g_dual[1])[k]
+            v[2] = ForwardDiff.partials(g_dual[2])[k]
+        end
+        vcols[k] = v
+    end
+    δxcols = map(vk -> -H \ vk, vcols)
+
+    # 5) Rewrap axis coords as Duals with computed partials
+    r_partials = map(δx -> δx[1], δxcols)
+    z_partials = map(δx -> δx[2], δxcols)
+    Raxis = dual_with_partials_like(el, RAf, r_partials)
+    Zaxis = dual_with_partials_like(el, ZAf, z_partials)
+
+    value_dual = Ψitp(Raxis, Zaxis)
+    return Raxis, Zaxis, value_dual
 end
 
 function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
