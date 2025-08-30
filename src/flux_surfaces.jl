@@ -30,14 +30,13 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
 
     # find initial guess
-    Rg, Zg = try
-        # search for a local minimum in the grid
-        search_axis_guess(canvas)
-    catch e
-        if canvas.Raxis > 0.0
-            # use the last known axis location, if valid
-            canvas.Raxis, canvas.Zaxis
-        else
+    Rg, Zg = if canvas.Raxis > 0.0
+        # use the last known axis location, if valid
+        canvas.Raxis, canvas.Zaxis
+    else
+         try
+            search_axis_guess(canvas)
+        catch e
             println("search_axis_guess() reported error: ", e)
             display(plot(canvas))
             error("Could not find magnetic axis guess from grid and no previous axis location available")
