@@ -1,6 +1,6 @@
 # Helper for constructing Duals with correct tag
 dual_with_partials_like(like_el, value::Real, partials::AbstractVector{<:Real}) =
-    ForwardDiff.Dual{ForwardDiff.tagtype(like_el)}(value, Tuple(partials))
+    Dual{ForwardDiff.tagtype(like_el)}(value, Tuple(partials))
 
 function search_axis_guess(canvas::Canvas)
     Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
@@ -55,15 +55,16 @@ function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Rea
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
 end
 
-function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:ForwardDiff.Dual, VC, II, DI, C1, C2}
+function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
      # Dual number path: use implicit differentiation
     Rs, Zs, Ip, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas.Ψ, canvas._Ψitp
     psisign = sign(ForwardDiff.value(Ip))
 
     # 1) Strip duals and solve with Float interpolant
     ψ_val = ForwardDiff.value.(Ψ)
+    Rg_val, Zg_val = ForwardDiff.value(Rg), ForwardDiff.value(Zg)
     itp_val = ψ_interpolant(Rs, Zs, ψ_val)
-    RAf, ZAf = IMAS.find_magnetic_axis(Rs, Zs, itp_val, psisign; rguess=Rg, zguess=Zg)
+    RAf, ZAf = IMAS.find_magnetic_axis(Rs, Zs, itp_val, psisign; rguess=Rg_val, zguess=Zg_val)
 
     # 2) Compute Hessian wrt (r,z) at float axis
     H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])

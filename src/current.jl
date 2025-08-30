@@ -60,32 +60,14 @@ function gridded_Jtor!(canvas::Canvas)
 end
 
 #**************************
-# AbstractCurrentProfiles
+# Current Profiles
 #**************************
-
-abstract type AbstractCurrentProfile end
-
 
 #*********************************************
 # BetapIp and PaxisIp
 # Based on https://arxiv.org/pdf/1503.03135
 #*********************************************
 
-mutable struct BetapIp{T} <: AbstractCurrentProfile
-    betap::T
-    alpha_m::T
-    alpha_n::T
-    Beta0::T
-    L::T
-end
-
-mutable struct PaxisIp{T} <: AbstractCurrentProfile
-    paxis::T
-    alpha_m::T
-    alpha_n::T
-    L::T
-    Beta0::T
-end
 
 @inline shape_function(psin::Real, profile::Union{BetapIp, PaxisIp}) = (1.0 - psin ^ profile.alpha_m) ^ profile.alpha_n
 
@@ -242,24 +224,6 @@ end
 # PprimeFFprime
 #******************
 
-mutable struct PprimeFFprime{F1<:DataInterpolations.AbstractInterpolation, F2<:DataInterpolations.AbstractInterpolation} <: AbstractCurrentProfile
-    pprime::F1
-    ffprime::F2
-    ffp_scale::Float64
-    grid::Symbol
-end
-
-PprimeFFprime(pprime::DataInterpolations.AbstractInterpolation, ffprime::DataInterpolations.AbstractInterpolation, grid::Symbol=:psi_norm) = PprimeFFprime(pprime, ffprime, 1.0, grid)
-
-function PprimeFFprime(dd::IMAS.dd; grid::Symbol=:psi_norm)
-    eqt1d = dd.equilibrium.time_slice[].profiles_1d
-    check_grid(grid)
-    x = getproperty(eqt1d, grid)
-    pprime = DataInterpolations.CubicSpline(eqt1d.dpressure_dpsi, x; extrapolation=ExtrapolationType.Extension)
-    ffprime = DataInterpolations.CubicSpline(eqt1d.f_df_dpsi, x; extrapolation=ExtrapolationType.Extension)
-    return PprimeFFprime(pprime, ffprime, grid)
-end
-
 function Pprime(canvas::Canvas, profile::PprimeFFprime, psin::Real, x::Real=get_x(canvas, profile, psin))
     return profile.pprime(x)
 end
@@ -348,59 +312,6 @@ end
 # PressureJt and PressureJtoR
 #********************************
 
-mutable struct PressureJtoR{F1<:DataInterpolations.AbstractInterpolation, F2<:DataInterpolations.AbstractInterpolation} <: AbstractCurrentProfile
-    pressure::F1
-    JtoR::F2 # <Jt / R>
-    J_scale::Float64
-    grid::Symbol
-end
-
-PressureJtoR(pressure::DataInterpolations.AbstractInterpolation, JtoR::DataInterpolations.AbstractInterpolation, grid::Symbol=:psi_norm) = PressureJtoR(pressure, JtoR, 1.0, grid)
-
-function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:psi_norm)
-    @assert j_p_from in (:equilibrium, :core_profiles)
-    check_grid(grid)
-    eqt1d = dd.equilibrium.time_slice[].profiles_1d
-    if j_p_from === :equilibrium
-        x = getproperty(eqt1d, grid)
-        pressure = DataInterpolations.CubicSpline(eqt1d.pressure, x; extrapolation=ExtrapolationType.Extension)
-        JtoR = DataInterpolations.CubicSpline(eqt1d.j_tor .* eqt1d.gm9, x; extrapolation=ExtrapolationType.Extension)
-    else
-        cp1d = dd.core_profiles.profiles_1d[]
-        x = getproperty(cp1d.grid, grid)
-        gm9 = IMAS.interp1d(getproperty(eqt1d, grid), eqt1d.gm9).(x)
-        pressure = DataInterpolations.CubicSpline(cp1d.pressure, x; extrapolation=ExtrapolationType.Extension)
-        JtoR = DataInterpolations.CubicSpline(cp1d.j_tor .* gm9, x; extrapolation=ExtrapolationType.Extension)
-    end
-    return PressureJtoR(pressure, JtoR, grid)
-end
-
-mutable struct PressureJt{F1<:DataInterpolations.AbstractInterpolation, F2<:DataInterpolations.AbstractInterpolation} <: AbstractCurrentProfile
-    pressure::F1
-    Jt::F2 # <Jt / R> / <1 / R>
-    J_scale::Float64
-    grid::Symbol
-end
-
-PressureJt(pressure::DataInterpolations.AbstractInterpolation, Jt::DataInterpolations.AbstractInterpolation, grid::Symbol=:psi_norm) = PressureJt(pressure, Jt, 1.0, grid)
-
-function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:psi_norm)
-    @assert j_p_from in (:equilibrium, :core_profiles)
-    check_grid(grid)
-    if j_p_from === :equilibrium
-        eqt1d = dd.equilibrium.time_slice[].profiles_1d
-        x = getproperty(eqt1d, grid)
-        pressure = DataInterpolations.CubicSpline(eqt1d.pressure, x; extrapolation=ExtrapolationType.Extension)
-        Jt = DataInterpolations.CubicSpline(eqt1d.j_tor, x; extrapolation=ExtrapolationType.Extension)
-    else
-        cp1d = dd.core_profiles.profiles_1d[]
-        x = getproperty(cp1d.grid, grid)
-        pressure = DataInterpolations.CubicSpline(cp1d.pressure, x; extrapolation=ExtrapolationType.Extension)
-        Jt = DataInterpolations.CubicSpline(cp1d.j_tor, x; extrapolation=ExtrapolationType.Extension)
-    end
-    return PressureJt(pressure, Jt, grid)
-end
-
 function Pprime(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}, psin::Real, x::Real=get_x(canvas, profile, psin))
     dP_dx = DataInterpolations.derivative(profile.pressure, x)
     dpsin_dΨ = 1.0 / (canvas.Ψbnd - canvas.Ψaxis)
@@ -487,14 +398,4 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
     end
 
     return Jt
-end
-
-#****************
-# SigmaQ
-#****************
-
-mutable struct SigmaQ{F1<:DataInterpolations.AbstractInterpolation, F2<:DataInterpolations.AbstractInterpolation} <: AbstractCurrentProfile
-    sigma::F1
-    q::F2
-    grid::Symbol
 end
