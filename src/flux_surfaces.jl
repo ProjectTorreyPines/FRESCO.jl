@@ -46,14 +46,14 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     return _find_axis(canvas, Rg, Zg)
 end
 
-grad!(G, x, p) = Interpolations.gradient!(G, p.Ψitp, x[1], x[2])
-hess!(H, x, p) = Interpolations.hessian!(H, p.Ψitp, x[1], x[2])
-const nf = NonlinearSolve.NonlinearFunction(grad!; jac = hess!)
+grad(x, p) = Interpolations.gradient(p.Ψitp, x[1], x[2])
+hess(x, p) = Interpolations.hessian(p.Ψitp, x[1], x[2])
+const nf = NonlinearSolve.NonlinearFunction(grad; jac = hess)
 
 function _find_axis(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
     x0 = @SVector[Rg, Zg]
     prob = NonlinearSolve.NonlinearProblem(nf, x0, (; Ψitp=Ψitp))
-    sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())#, show_trace=Val(true))
+    sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())
     Raxis, Zaxis = sol.u[1], sol.u[2]
 
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
