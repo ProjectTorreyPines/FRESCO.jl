@@ -46,24 +46,33 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     return _find_axis(canvas, Rg, Zg)
 end
 
+grad!(G, x, p) = Interpolations.gradient!(G, p.Ψitp, x[1], x[2])
+hess!(H, x, p) = Interpolations.hessian!(H, p.Ψitp, x[1], x[2])
+const nf = NonlinearSolve.NonlinearFunction(grad!; jac = hess!)
+
+function _find_axis(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
+    x0 = @SVector[Rg, Zg]
+    prob = NonlinearSolve.NonlinearProblem(nf, x0, (; Ψitp=Ψitp))
+    sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())#, show_trace=Val(true))
+    Raxis, Zaxis = sol.u[1], sol.u[2]
+
+    return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+end
+
 function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
     # Float path
-    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
-    psisign = sign(Ip)
-    Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
-    return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+    return _find_axis(canvas._Ψitp, Rg, Zg)
 end
 
 function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
      # Dual number path: use implicit differentiation
-    Rs, Zs, Ip, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas.Ψ, canvas._Ψitp
-    psisign = sign(ForwardDiff.value(Ip))
+    Rs, Zs, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp
 
     # 1) Strip duals and solve with Float interpolant
     ψ_val = ForwardDiff.value.(Ψ)
     Rg_val, Zg_val = ForwardDiff.value(Rg), ForwardDiff.value(Zg)
     itp_val = ψ_interpolant(Rs, Zs, ψ_val)
-    RAf, ZAf = IMAS.find_magnetic_axis(Rs, Zs, itp_val, psisign; rguess=Rg_val, zguess=Zg_val)
+    RAf, ZAf, _ = _find_axis(itp_val, Rg_val, Zg_val)
 
     # 2) Compute Hessian wrt (r,z) at float axis
     H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])

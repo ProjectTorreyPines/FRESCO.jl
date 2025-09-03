@@ -14,6 +14,7 @@ using Plots
 import LoopVectorization: @turbo, @tturbo
 using Printf
 import ForwardDiff: ForwardDiff, Dual
+import NonlinearSolve
 
 const μ₀ = π * 4e-7
 const twopi = 2π
