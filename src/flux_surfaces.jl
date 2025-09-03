@@ -1,3 +1,7 @@
+# Helper for constructing Duals with correct tag
+dual_with_partials_like(like_el, value::Real, partials::AbstractVector{<:Real}) =
+    Dual{ForwardDiff.tagtype(like_el)}(value, Tuple(partials))
+
 function search_axis_guess(canvas::Canvas)
     Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
     psisign = sign(Ip)
@@ -24,25 +28,85 @@ end
 
 function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
-    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
-    psisign = sign(Ip)
 
     # find initial guess
-    Rg, Zg = try
-        # search for a local minimum in the grid
-        search_axis_guess(canvas)
-    catch e
-        if canvas.Raxis > 0.0
-            # use the last known axis location, if valid
-            canvas.Raxis, canvas.Zaxis
-        else
+    Rg, Zg = if canvas.Raxis > 0.0
+        # use the last known axis location, if valid
+        canvas.Raxis, canvas.Zaxis
+    else
+         try
+            search_axis_guess(canvas)
+        catch e
             println("search_axis_guess() reported error: ", e)
             display(plot(canvas))
             error("Could not find magnetic axis guess from grid and no previous axis location available")
         end
     end
-    Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
+
+    return _find_axis(canvas, Rg, Zg)
+end
+
+grad(x, p) = Interpolations.gradient(p.Ψitp, x[1], x[2])
+hess(x, p) = Interpolations.hessian(p.Ψitp, x[1], x[2])
+const nf = NonlinearSolve.NonlinearFunction(grad; jac = hess)
+
+function _find_axis(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
+    x0 = @SVector[Rg, Zg]
+    prob = NonlinearSolve.NonlinearProblem(nf, x0, (; Ψitp=Ψitp))
+    sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())
+    Raxis, Zaxis = sol.u[1], sol.u[2]
+
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+end
+
+function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
+    # Float path
+    return _find_axis(canvas._Ψitp, Rg, Zg)
+end
+
+function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
+     # Dual number path: use implicit differentiation
+    Rs, Zs, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp
+
+    # 1) Strip duals and solve with Float interpolant
+    ψ_val = ForwardDiff.value.(Ψ)
+    Rg_val, Zg_val = ForwardDiff.value(Rg), ForwardDiff.value(Zg)
+    itp_val = ψ_interpolant(Rs, Zs, ψ_val)
+    RAf, ZAf, _ = _find_axis(itp_val, Rg_val, Zg_val)
+
+    # 2) Compute Hessian wrt (r,z) at float axis
+    H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])
+    # light diagonal regularization
+    H[1,1] += 1e-9
+    H[2,2] += 1e-9
+
+    # 3)Compute gradient at axis (w.r.t. Ψ)
+    # Use the spline's analytic gradient; returns Duals because coefficients are Dual
+    g_dual = Interpolations.gradient(Ψitp, RAf, ZAf)
+    # NOTE: g_dual is a length-2 Tuple of Duals; its partials encode ∂∇_x f / ∂Ψ · δΨ
+
+    # 4) Extract sensitivities for each AD direction
+    el = Ψ[1, 1]  # any psi element to read AD tag/width
+    K = ForwardDiff.npartials(el)
+    vcols = Vector{Vector{Float64}}(undef, K)
+    for k in 1:K
+        v = Vector{Float64}(undef, 2)
+        @inbounds begin
+            v[1] = ForwardDiff.partials(g_dual[1])[k]
+            v[2] = ForwardDiff.partials(g_dual[2])[k]
+        end
+        vcols[k] = v
+    end
+    δxcols = map(vk -> -H \ vk, vcols)
+
+    # 5) Rewrap axis coords as Duals with computed partials
+    r_partials = map(δx -> δx[1], δxcols)
+    z_partials = map(δx -> δx[2], δxcols)
+    Raxis = dual_with_partials_like(el, RAf, r_partials)
+    Zaxis = dual_with_partials_like(el, ZAf, z_partials)
+
+    value_dual = Ψitp(Raxis, Zaxis)
+    return Raxis, Zaxis, value_dual
 end
 
 function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
@@ -64,7 +128,8 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     end
 end
 
-psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
+psinorm(psi::Real, canvas::Canvas) = psinorm(psi, canvas.Ψaxis, canvas.Ψbnd)
+psinorm(psi::Real, Ψaxis::Real, Ψbnd::Real) = (psi - Ψaxis) / (Ψbnd - Ψaxis)
 psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 
 function boundary!(canvas::Canvas)
@@ -90,11 +155,11 @@ function update_bounds!(canvas; update_Ψitp::Bool=true)
     return canvas
 end
 
-function in_plasma_bb(r::Real, z::Real, canvas::Canvas)
-    rmin, rmax = canvas._rextrema
+function in_plasma_bb(r::Real, z::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real})
+    rmin, rmax = rext
     (r < rmin || r > rmax) && return false
 
-    zmin, zmax = canvas._zextrema
+    zmin, zmax = zext
     (z < zmin || z > zmax) && return false
 
     return true
@@ -102,17 +167,22 @@ end
 
 function in_core(r::Real, z::Real, psin::Real, canvas::Canvas,
     ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    rext, zext, bnd = canvas._rextrema, canvas._zextrema, canvas._bnd
+    return in_core(r, z, psin, rext, zext, bnd, ellipse)
+end
 
+function in_core(r::Real, z::Real, psin::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real},
+    bnd::Vector{<:SVector{2,<:Real}}, ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
     # Check psinorm value
     psin > 1.0 && return false
 
     # Check outside bounding box
-    !in_plasma_bb(r, z, canvas) && return false
+    !in_plasma_bb(r, z, rext, zext) && return false
 
     in_ellipse(r, z, ellipse) && return true
 
     # Finally make sure it's in the boundary
-    return inpolygon((r, z), canvas._bnd) == 1
+    return inpolygon((r, z), bnd) == 1
 end
 
 in_ellipse(r, z, ellipse::Nothing) = false
@@ -123,8 +193,8 @@ function in_ellipse(r::Real, z::Real, ellipse::AbstractVector{<:Real})
     return ((r - R0) / a)^2 + ((z - Z0) / b)^2 <= 1.0
 end
 
-function compute_ellipse(canvas::Canvas)
-    bnd, rext, zext = canvas._bnd, canvas._rextrema, canvas._zextrema
+compute_ellipse(canvas::Canvas) = compute_ellipse(canvas._bnd, canvas._rextrema, canvas._zextrema)
+function compute_ellipse(bnd, rext, zext)
     κ = (zext[2] - zext[1]) / (rext[2] - rext[1])
     R0, Z0 = centroid(bnd)
     radius = p -> sqrt((p[1] - R0)^2 + ((p[2] - Z0) / κ)^2)
