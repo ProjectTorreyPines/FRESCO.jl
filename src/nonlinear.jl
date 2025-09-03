@@ -178,10 +178,29 @@ end
 
 function residual(du::Matrix{S}, Ψpl::Matrix{S}, canvas::Canvas{T,S,VC,II,DI,C1,C2}, profile) where {T,S,VC,II,DI,C1,C2}
     canvas._Ψpl .= Ψpl
-    # We can update the coil currents here if we need to via control
-    FRESCO.set_Ψvac!(canvas)
-    FRESCO.sync_Ψ!(canvas; update_vacuum=false, update_Ψitp=true)
-    FRESCO.update_bounds!(canvas; update_Ψitp=false)
+
+    # Control (shape only for now)
+    control = :shape
+    if control in [:shape, :magnetics]
+        coils, flux_cps, fixed_coils = canvas.coils, canvas.flux_cps, canvas.fixed_coils
+        ctrl_kwargs = (control === :shape) ?
+            (; flux_cps, iso_cps = canvas.iso_cps, saddle_cps = canvas.saddle_cps) :
+            (; flux_cps, iso_cps = canvas.loop_cps, field_cps = canvas.field_cps)
+        @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
+        Acps = VacuumFields.define_A(active_coils; ctrl_kwargs...)
+        b_offset = zeros(eltype(Acps), size(Acps, 1))
+        fcs = @views coils[fixed_coils]
+        VacuumFields.offset_b!(b_offset; fixed_coils=fcs, ctrl_kwargs...)
+        if control === :shape
+            shape_control!(canvas, fixed_coils, Acps, b_offset)
+        else
+            magnetics!(canvas, fixed_coils, Acps, b_offset)
+        end
+    else
+        FRESCO.set_Ψvac!(canvas)
+    end
+    sync_Ψ!(canvas; update_vacuum=false, update_Ψitp=true)
+    update_bounds!(canvas; update_Ψitp=false)
 
     # The current from the profiles
     FRESCO.Jtor!(canvas, profile; update_surfaces=true, compute_Ip_from=:fsa)
