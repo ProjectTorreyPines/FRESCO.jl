@@ -39,11 +39,16 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) w
 end
 
 function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T};
-                coils=nothing, load_pf_active=true, load_pf_passive=true,
-                x_points_weight::Real=1.0, strike_points_weight::Real=1.0,
+                coils=nothing,
+                load_pf_active=true,
+                load_pf_passive=true,
+                x_points_weight::Real=1.0,
                 active_x_points::AbstractVector{Int}=Int[],
+                strike_points_weight::Real=1.0,
                 reference_flux_loop_index::Int=1,
+                flux_loop_weight::Real=1.0,
                 flux_loop_weights::AbstractVector{<:Real}=T[],
+                magnetic_probe_weight::Real=1.0,
                 magnetic_probe_weights::AbstractVector{<:Real}=T[],
                 fixed_coils::Union{Nothing, Vector{Int}}=nothing,
                 kwargs...) where {T<:Real}
@@ -58,7 +63,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
             mxh.ϵ *= 1.1
             wall_r, wall_z = mxh(100)
         end
-        iso_cps, saddle_cps = VacuumFields.boundary_control_points(dd; x_points_weight, strike_points_weight, active_x_points)
+        iso_cps, saddle_cps = VacuumFields.boundary_control_points(eqt; x_points_weight, strike_points_weight, active_x_points)
     else
         iso_cps = VacuumFields.IsoControlPoint{T}[]
         saddle_cps = VacuumFields.SaddleControlPoint{T}[]
@@ -66,7 +71,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
 
     if (!isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) &&
         !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux))
-        flux_cps, loop_cps, field_cps = VacuumFields.magnetic_control_points(dd; reference_flux_loop_index, flux_loop_weights, magnetic_probe_weights)
+        flux_cps, loop_cps, field_cps = VacuumFields.magnetic_control_points(dd.magnetics; reference_flux_loop_index, flux_loop_weight, flux_loop_weights, magnetic_probe_weight, magnetic_probe_weights)
     else
         flux_cps = VacuumFields.FluxControlPoint{T}[]
         loop_cps = VacuumFields.IsoControlPoint{T}[]
@@ -110,7 +115,6 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
         Rb, Zb = T[], T[]
     end
     canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, kwargs...)
-
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
