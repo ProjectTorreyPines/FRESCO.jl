@@ -39,19 +39,19 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) w
 end
 
 function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T};
-                coils=nothing,
-                load_pf_active=true,
-                load_pf_passive=true,
-                x_points_weight::Real=1.0,
-                active_x_points::AbstractVector{Int}=Int[],
-                strike_points_weight::Real=1.0,
-                reference_flux_loop_index::Int=1,
-                flux_loop_weight::Real=1.0,
-                flux_loop_weights::AbstractVector{<:Real}=T[],
-                magnetic_probe_weight::Real=1.0,
-                magnetic_probe_weights::AbstractVector{<:Real}=T[],
-                fixed_coils::Union{Nothing, Vector{Int}}=nothing,
-                kwargs...) where {T<:Real}
+    coils=nothing,
+    load_pf_active=true,
+    load_pf_passive=true,
+    x_points_weight::Real=1.0,
+    active_x_points::AbstractVector{Int}=Int[],
+    strike_points_weight::Real=1.0,
+    reference_flux_loop_index::Int=1,
+    flux_loop_weight::Real=1.0,
+    flux_loop_weights::AbstractVector{<:Real}=T[],
+    magnetic_probe_weight::Real=1.0,
+    magnetic_probe_weights::AbstractVector{<:Real}=T[],
+    fixed_coils::Union{Nothing,Vector{Int}}=nothing,
+    kwargs...) where {T<:Real}
 
     eqt = dd.equilibrium.time_slice[]
 
@@ -69,9 +69,12 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
         saddle_cps = VacuumFields.SaddleControlPoint{T}[]
     end
 
-    if (!isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) &&
-        !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux))
-        flux_cps, loop_cps, field_cps = VacuumFields.magnetic_control_points(dd.magnetics; reference_flux_loop_index, flux_loop_weight, flux_loop_weights, magnetic_probe_weight, magnetic_probe_weights)
+    if (
+        !isempty(dd.magnetics) && !isempty(dd.magnetics.b_field_pol_probe) && !isempty(dd.magnetics.b_field_pol_probe[1].field) &&
+        !isempty(dd.magnetics.flux_loop) && !isempty(dd.magnetics.flux_loop[1].flux)
+    )
+        loop_cps, flux_cps, field_cps =
+            VacuumFields.magnetic_control_points(dd.magnetics; reference_flux_loop_index, flux_loop_weight, flux_loop_weights, magnetic_probe_weight, magnetic_probe_weights)
     else
         flux_cps = VacuumFields.FluxControlPoint{T}[]
         loop_cps = VacuumFields.IsoControlPoint{T}[]
@@ -114,7 +117,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     else
         Rb, Zb = T[], T[]
     end
-    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb,  Zb, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, kwargs...)
+    canvas = Canvas(Rs, Zs, Ψ, Ip, Fbnd, coils, wall_r, wall_z, Rb, Zb, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces; fixed_coils, kwargs...)
 
     set_Ψvac!(canvas)
     canvas._Ψpl .= canvas.Ψ - canvas._Ψvac
@@ -129,42 +132,42 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
 end
 
 function Canvas(Rs::AbstractRange{T},
-                Zs::AbstractRange{T},
-                Ip::T,
-                Fbnd::T,
-                coils::CoilVectorType,
-                Rw::Vector{T},
-                Zw::Vector{T},
-                Rb_target::Vector{T},
-                Zb_target::Vector{T},
-                iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
-                flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
-                saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
-                field_cps::Vector{VacuumFields.FieldControlPoint{T}},
-                loop_cps::Vector{VacuumFields.IsoControlPoint{T}};
-                kwargs...) where {T<:Real}
+    Zs::AbstractRange{T},
+    Ip::T,
+    Fbnd::T,
+    coils::CoilVectorType,
+    Rw::Vector{T},
+    Zw::Vector{T},
+    Rb_target::Vector{T},
+    Zb_target::Vector{T},
+    iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
+    flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
+    saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
+    field_cps::Vector{VacuumFields.FieldControlPoint{T}},
+    loop_cps::Vector{VacuumFields.IsoControlPoint{T}};
+    kwargs...) where {T<:Real}
     return Canvas(; Rs, Zs, Ip, coils, Rw, Zw, Fbnd, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, kwargs...)
 end
 
 function Canvas(Rs::AbstractRange{T},
-                Zs::AbstractRange{T},
-                Ψ::Matrix{T},
-                Ip::T,
-                Fbnd::T,
-                coils::CoilVectorType,
-                Rw::Vector{T},
-                Zw::Vector{T},
-                Rb_target::Vector{T},
-                Zb_target::Vector{T},
-                iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
-                flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
-                saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
-                field_cps::Vector{VacuumFields.FieldControlPoint{T}},
-                loop_cps::Vector{VacuumFields.IsoControlPoint{T}},
-                surfaces::Vector{<:IMAS.SimpleSurface};
-                fixed_coils::Vector{Int}=Int[],
-                Green_table::Array{T, 3}=VacuumFields.Green_table(Rs, Zs, coils),
-                kwargs...) where {T<:Real}
+    Zs::AbstractRange{T},
+    Ψ::Matrix{T},
+    Ip::T,
+    Fbnd::T,
+    coils::CoilVectorType,
+    Rw::Vector{T},
+    Zw::Vector{T},
+    Rb_target::Vector{T},
+    Zb_target::Vector{T},
+    iso_cps::Vector{VacuumFields.IsoControlPoint{T}},
+    flux_cps::Vector{VacuumFields.FluxControlPoint{T}},
+    saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}},
+    field_cps::Vector{VacuumFields.FieldControlPoint{T}},
+    loop_cps::Vector{VacuumFields.IsoControlPoint{T}},
+    surfaces::Vector{<:IMAS.SimpleSurface};
+    fixed_coils::Vector{Int}=Int[],
+    Green_table::Array{T,3}=VacuumFields.Green_table(Rs, Zs, coils),
+    kwargs...) where {T<:Real}
     Nr, Nz = length(Rs), length(Zs)
     @assert size(Ψ) == (Nr, Nz) "Ψ is incorrect size for Rs and Zs grid"
     @assert size(Green_table) == (Nr, Nz, length(coils)) "Green_table is incorrect size for grid and coils"
@@ -172,11 +175,11 @@ function Canvas(Rs::AbstractRange{T},
     return Canvas(; Rs, Zs, Ψ, Ip, Fbnd, coils, Rw, Zw, Rb_target, Zb_target, iso_cps, flux_cps, saddle_cps, field_cps, loop_cps, surfaces, fixed_coils, Green_table, kwargs...)
 end
 
-function Canvas(canvas0::C; kwargs...) where {C <: Canvas}
+function Canvas(canvas0::C; kwargs...) where {C<:Canvas}
     # ── 1. current fields → NamedTuple ────────────────────────────────
     names = fieldnames(C)
-    vals  = (getfield(canvas0, name) for name in names)
-    nt    = NamedTuple{names}(vals)
+    vals = (getfield(canvas0, name) for name in names)
+    nt = NamedTuple{names}(vals)
 
     # ── 2. merge: kwargs override existing entries ───────────────────
     nt2 = (; nt..., kwargs...)
