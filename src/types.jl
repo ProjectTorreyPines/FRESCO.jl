@@ -20,7 +20,6 @@ const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf
     flux_cps::Vector{VacuumFields.FluxControlPoint{T}} = VacuumFields.FluxControlPoint{eltype(Rs)}[]
     saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}} = VacuumFields.SaddleControlPoint{eltype(Rs)}[]
     field_cps::Vector{VacuumFields.FieldControlPoint{T}} = VacuumFields.FieldControlPoint{eltype(Rs)}[]
-    loop_cps::Vector{VacuumFields.IsoControlPoint{T}} = VacuumFields.IsoControlPoint{eltype(Rs)}[]
     surfaces::Vector{IMAS.SimpleSurface{T}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
