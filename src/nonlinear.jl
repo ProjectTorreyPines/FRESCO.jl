@@ -170,32 +170,25 @@ end
  Residual
 ==============================================================================#
 
-function residual(du::Matrix{DT}, Ψpl::Matrix{DT}, canvas::Canvas{T,S,VC,II,DI,C1,C2}, profile) where {DT<:Dual,T,S<:AbstractFloat,VC,II,DI,C1,C2}
+function residual(du::AbstractArray{DT}, Ψpl::AbstractArray{DT}, canvas::Canvas{T,S,VC,II,DI,C1,C2}, profile; Acps=nothing, b_offset=nothing) where {DT<:Dual,T,S<:AbstractFloat,VC,II,DI,C1,C2}
     dual_canvas = dualize(DT, canvas)
     dual_profile = dualize(DT, profile)
-    return residual(du, Ψpl, dual_canvas, dual_profile)
+    return residual(du, Ψpl, dual_canvas, dual_profile; Acps, b_offset)
 end
 
-function residual(du::Matrix{S}, Ψpl::Matrix{S}, canvas::Canvas{T,S,VC,II,DI,C1,C2}, profile) where {T,S,VC,II,DI,C1,C2}
-    canvas._Ψpl .= Ψpl
+function residual(du::AT, Ψpl::AT, canvas::Canvas{T,S,VC,II,DI,C1,C2}, profile; Acps=nothing, b_offset=nothing) where {T,S,VC,II,DI,C1,C2,AT<:Union{Vector{S}, Matrix{S}}}
+    canvas._Ψpl[:] = @view Ψpl[:]
 
     # Control (shape only for now)
     control = :shape
-    if control in [:shape, :magnetics]
-        coils, flux_cps, fixed_coils = canvas.coils, canvas.flux_cps, canvas.fixed_coils
-        ctrl_kwargs = (control === :shape) ?
-            (; flux_cps, iso_cps = canvas.iso_cps, saddle_cps = canvas.saddle_cps) :
-            (; flux_cps, iso_cps = canvas.loop_cps, field_cps = canvas.field_cps)
-        @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
-        Acps = VacuumFields.define_A(active_coils; ctrl_kwargs...)
-        b_offset = zeros(eltype(Acps), size(Acps, 1))
-        fcs = @views coils[fixed_coils]
-        VacuumFields.offset_b!(b_offset; fixed_coils=fcs, ctrl_kwargs...)
-        if control === :shape
-            shape_control!(canvas, fixed_coils, Acps, b_offset)
-        else
-            magnetics!(canvas, fixed_coils, Acps, b_offset)
-        end
+    if Acps === nothing || b_offset === nothing
+        Acps, b_offset = setup_Acps_b_offset(canvas, control)
+    end
+
+    if control === :shape
+        shape_control!(canvas, canvas.fixed_coils, Acps, b_offset)
+    elseif control === :magnetics
+        magnetics!(canvas, canvas.fixed_coils, Acps, b_offset)
     else
         FRESCO.set_Ψvac!(canvas)
     end
@@ -207,7 +200,9 @@ function residual(du::Matrix{S}, Ψpl::Matrix{S}, canvas::Canvas{T,S,VC,II,DI,C1
     FRESCO.invert_GS_zero_bnd!(canvas) # this defines U for the boundary integral
     FRESCO.set_boundary_flux!(canvas)
     FRESCO.invert_GS!(canvas; update_Ψitp=false)
-    return du .= Ψpl .- canvas._Ψpl
+    du[:] = @view canvas._Ψpl[:]
+    du .-= Ψpl
+    return nothing
 end
 
 

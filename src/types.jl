@@ -84,6 +84,8 @@ end
     _z_cache::Vector{DT} = IMASutils.contour_cache(Ψ; aggression_level=3)[2]
 end
 
+Base.copy(canvas::Canvas) = deepcopy(canvas)
+
 function default_vs_circuit(Rs, Zs)
     R0, Z0 = 0.5 * (Rs[end] + Rs[1]), 0.5 * (Zs[end] + Zs[1])
     dZ = 0.5 * (Zs[end] - Zs[1])
@@ -130,6 +132,9 @@ end
 ===============================================================================#
 abstract type AbstractCurrentProfile end
 
+Base.copy(profile::AbstractCurrentProfile) = deepcopy(profile)
+
+Base.copy(p::Tuple{<:Canvas, <:AbstractCurrentProfile, <:AbstractArray, <:AbstractArray}) = deepcopy(p)
 
 mutable struct BetapIp{T} <: AbstractCurrentProfile
     betap::T

@@ -61,6 +61,10 @@ end
 
 function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
     # Float path
+    # Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
+    # psisign = sign(Ip)
+    # Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
+    # return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
     return _find_axis(canvas._Ψitp, Rg, Zg)
 end
 
@@ -118,14 +122,14 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     axis2bnd = (canvas.Ip >= 0.0) ? :increasing : :decreasing
     Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
                                   PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
-    try
-        canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
-    catch e
-        p = plot(canvas)
-        scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
-        display(p)
-        rethrow(e)
-    end
+    # try
+    canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
+    # catch e
+    #     p = plot(canvas)
+    #     scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
+    #     display(p)
+    #     rethrow(e)
+    # end
 end
 
 psinorm(psi::Real, canvas::Canvas) = psinorm(psi, canvas.Ψaxis, canvas.Ψbnd)
