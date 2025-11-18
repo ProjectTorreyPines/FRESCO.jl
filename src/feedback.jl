@@ -73,8 +73,7 @@ function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Re
 end
 
 function shape_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    iso_cps, flux_cps, saddle_cps = canvas.iso_cps, canvas.flux_cps, canvas.saddle_cps
-    fit_control_points!(canvas, fixed; iso_cps, flux_cps, saddle_cps, A=Acps, b_offset)
+    fit_control_points!(canvas, fixed; canvas.flux_cps, canvas.iso_cps, canvas.saddle_cps, canvas.field_cps, A=Acps, b_offset)
     return canvas
 end
 
@@ -120,9 +119,8 @@ function eddy_control!(canvas::Canvas, coil_states::Union{Nothing, Vector{<:Coil
 end
 
 
-function magnetics!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
-    loop_cps, flux_cps, field_cps = canvas.loop_cps, canvas.flux_cps, canvas.field_cps
-    fit_control_points!(canvas, fixed; iso_cps = loop_cps, flux_cps, field_cps, A=Acps, b_offset)
+function magnetics_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Matrix{<:Real}, b_offset::AbstractVector{<:Real})
+    fit_control_points!(canvas, fixed; canvas.flux_cps, canvas.iso_cps, canvas.saddle_cps, canvas.field_cps, A=Acps, b_offset)
     return canvas
 end
 
