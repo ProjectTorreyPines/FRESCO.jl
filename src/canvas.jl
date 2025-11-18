@@ -48,6 +48,8 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
     flux_cps::Vector{VacuumFields.FluxControlPoint{T}}=VacuumFields.FluxControlPoint{T}[],
     saddle_cps::Vector{VacuumFields.SaddleControlPoint{T}}=VacuumFields.SaddleControlPoint{T}[],
     field_cps::Vector{VacuumFields.FieldControlPoint{T}}=VacuumFields.FieldControlPoint{T}[],
+    initialize_cps::Bool=(isempty(iso_cps) && isempty(flux_cps) && isempty(saddle_cps) && isempty(field_cps)),
+    active_x_points::AbstractVector{Int}=Int[],
     fixed_coils::Union{Nothing,Vector{Int}}=nothing,
     kwargs...) where {T<:Real}
 
@@ -83,6 +85,28 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T
         end
     elseif fixed_coils === nothing
         fixed_coils = Int[]
+    end
+
+    # If no control points were provided, populate reasonable defaults
+    # from the IMAS equilibrium and magnetics using VacuumFields helpers.
+    if initialize_cps
+
+        # Equilibrium-based control points (boundary, x-points, strike points)
+        iso_cps, saddle_cps = VacuumFields.boundary_control_points(
+            eqt;
+            boundary_weight=1.0,
+            x_points_weight=1.0,
+            strike_points_weight=1.0,
+            active_x_points
+        )
+
+        # Magnetics-based control points, if magnetics are available
+        if !isempty(dd.magnetics)
+            mag_cps = VacuumFields.magnetic_control_points(dd.magnetics)
+            iso_cps = vcat(iso_cps, mag_cps.iso_cps)
+            flux_cps = vcat(flux_cps, mag_cps.flux_cps)
+            field_cps = mag_cps.field_cps
+        end
     end
 
     # define current and F at boundary
