@@ -43,14 +43,14 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
         end
     end
 
-    return _find_axis(canvas, Rg, Zg)
+    return find_critical_point(canvas, Rg, Zg)
 end
 
 grad(x, p) = Interpolations.gradient(p.Ψitp, x[1], x[2])
 hess(x, p) = Interpolations.hessian(p.Ψitp, x[1], x[2])
 const nf = NonlinearSolve.NonlinearFunction(grad; jac = hess)
 
-function _find_axis(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
+function find_critical_point(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
     x0 = @SVector[Rg, Zg]
     prob = NonlinearSolve.NonlinearProblem(nf, x0, (; Ψitp=Ψitp))
     sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())
@@ -59,16 +59,16 @@ function _find_axis(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::R
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
 end
 
-function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
+function find_critical_point(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
     # Float path
     # Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
     # psisign = sign(Ip)
     # Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
     # return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
-    return _find_axis(canvas._Ψitp, Rg, Zg)
+    return find_critical_point(canvas._Ψitp, Rg, Zg)
 end
 
-function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
+function find_critical_point(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
      # Dual number path: use implicit differentiation
     Rs, Zs, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp
 
@@ -76,7 +76,7 @@ function _find_axis(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Rea
     ψ_val = ForwardDiff.value.(Ψ)
     Rg_val, Zg_val = ForwardDiff.value(Rg), ForwardDiff.value(Zg)
     itp_val = ψ_interpolant(Rs, Zs, ψ_val)
-    RAf, ZAf, _ = _find_axis(itp_val, Rg_val, Zg_val)
+    RAf, ZAf, _ = find_critical_point(itp_val, Rg_val, Zg_val)
 
     # 2) Compute Hessian wrt (r,z) at float axis
     H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])
@@ -130,6 +130,88 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     #     display(p)
     #     rethrow(e)
     # end
+end
+
+function new_flux_bounds!(canvas::Canvas{T, DT, VC, II, DI, C1, C2}; update_Ψitp::Bool=true) where {T, DT, VC, II, DI, C1, C2}
+    update_Ψitp && update_interpolation!(canvas)
+    Rs, Zs, Ψitp, is_in_wall = canvas.Rs, canvas.Zs, canvas._Ψitp, canvas._is_in_wall
+    gradpsi = canvas._tmp_Ψ
+
+    # Compute |∇Ψ|
+    for (j, z) in enumerate(Zs)
+        for (i, r) in enumerate(Rs)
+            gradpsi[i, j] = (is_in_wall[i, j] ?
+                norm(Interpolations.gradient(Ψitp, r, z)) :
+                0.0)
+        end
+    end
+
+    # Find axis and most-active saddle point
+    Raxis, Zaxis, Ψaxis = NaN, NaN, NaN
+    Rx, Zx, Ψx = NaN, NaN, NaN
+    for (j, z) in enumerate(Zs)
+        jmin, jmax = max(1, j-1), min(length(Zs), j+1)
+        for (i, r) in enumerate(Rs)
+            !is_in_wall[i, j] && continue
+            imin, imax = max(1, i-1), min(length(Rs), i+1)
+            if gradpsi[i, j] == @views minimum(gradpsi[imin:imax, jmin:jmax])
+                # Found a local critical point
+                Rcp, Zcp, Ψcp = find_critical_point(canvas, r, z)
+
+                # check if it's axis or saddle
+                 if det(Interpolations.hessian(Ψitp, Rcp, Zcp)) > 0.0
+                    # magnetic axis
+                    if isnan(Raxis)
+                        Raxis, Zaxis, Ψaxis = Rcp, Zcp, Ψcp
+                    elseif !(isapprox(Raxis, Rcp; atol=step(Rs)) && isapprox(Zaxis, Zcp; atol=step(Zs)))
+                        error("Found multiple magnetic axes: $((Raxis, Zaxis)) and $((Rcp, Zcp))")
+                    end
+                else
+                    # saddle point
+                    if isnan(Rx) || (abs(Ψcp - Ψaxis) < abs(Ψx - Ψaxis))
+                        # first saddle or closest to axis
+                        Rx, Zx, Ψx = Rcp, Zcp, Ψcp
+                    end
+                end
+            end
+        end
+    end
+    @assert !isnan(Raxis) "Could not find magnetic axis!"
+
+    # Check if limited
+    Rw, Zw = canvas.Rw, canvas.Zw
+    klim = -1
+    for (k, (r, z)) in enumerate(zip(Rw, Zw))
+        Ψwall = Ψitp(r, z)
+        if (abs(Ψwall - Ψaxis) < abs(Ψx - Ψaxis))
+            # wall point closer to axis flux
+            # check if flux gradient points towards axis
+            Ψr, Ψz = Interpolations.gradient(Ψitp, r, z)
+            if sign(Ψr * (r - Raxis) + Ψz * (z - Zaxis)) > 0
+                # wall flux is limiting point
+                klim = k
+            end
+        end
+    end
+
+    if klim > 0
+        wall_closed = (Rw[1] == Rw[end]) && (Zw[1] == Zw[end])
+        # refine boundary point
+
+        kmin = (klim > 1) ? klim - 1 : (wall_closed ? length(Rw) - 1 : length(Rw))
+        kmax = (klim < length(Rw)) ? klim + 1 : (wall_closed ? 2 : 1)
+        t = range(-1.0, 1.0, 3)
+        x = @SVector[Rw[kmin], Rw[klim], Rw[kmax]]
+        y = @SVector[Zw[kmin], Zw[klim], Zw[kmax]]
+
+        # interpolate and find t to minimize abs(Ψ - Ψaxis)
+        # ???
+    end
+
+
+    Ψbnd = Ψx
+
+    canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
 end
 
 psinorm(psi::Real, canvas::Canvas) = psinorm(psi, canvas.Ψaxis, canvas.Ψbnd)
