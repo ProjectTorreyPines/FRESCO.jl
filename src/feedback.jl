@@ -94,9 +94,8 @@ function set_mutuals!(canvas::Canvas)
     return canvas
 end
 
-function eddy_control!(canvas::Canvas)
+function eddy_control!(canvas::Canvas, coil_states::Union{Nothing, Vector{<:CoilState}})
     coils, Ψ_at_coils, tmp, mutuals_LU = canvas.coils, canvas._Ψ_at_coils, canvas._tmp_Ncoils, canvas._mutuals_LU
-    gridded_Jtor!(canvas)
 
     # tmp is flux from coils at each coil
     tmp .= Ψ_at_coils
@@ -111,6 +110,11 @@ function eddy_control!(canvas::Canvas)
     for (k, coil) in enumerate(coils)
         VacuumFields.set_current_per_turn!(coil, tmp[k])
     end
+    if coil_states !== nothing
+        for (k, cs) in enumerate(coil_states)
+            cs.current_per_turn[2] = tmp[k]
+        end
+    end
     set_Ψvac!(canvas)
 end
 
@@ -120,15 +124,32 @@ function magnetics_control!(canvas::Canvas, fixed::AbstractVector{Int}, Acps::Ma
     return canvas
 end
 
-function fit_control_points!(canvas::Canvas, fixed::AbstractVector{Int}; kwargs...)
+function fit_control_points!(canvas::Canvas{T,DT,VC,II,DI,C1,C2}, fixed::AbstractVector{Int}; kwargs...) where {T,DT,VC,II,DI,C1,C2}
     Rs, Zs, Ψpl, coils, λ_regularize = canvas.Rs, canvas.Zs, canvas._Ψpl, canvas.coils, canvas.λ_regularize
     Ψpl_itp = ψ_interpolant(Rs, Zs, Ψpl)
     Ψpl_func = (x, y) -> plasma_flux(canvas, x, y, Ψpl_itp)
     dΨpl_dR = (x, y) -> plasma_dψdR(canvas, x, y, Ψpl_itp)
     dΨpl_dZ = (x, y) -> plasma_dψdZ(canvas, x, y, Ψpl_itp)
     @views fixed_coils = coils[fixed]
-    @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed)]
-    VacuumFields.find_coil_currents!(active_coils, Ψpl_func, dΨpl_dR, dΨpl_dZ; fixed_coils, λ_regularize, kwargs...)
+    if isempty(fixed_coils)
+        VacuumFields.find_coil_currents!(coils, Ψpl_func, dΨpl_dR, dΨpl_dZ; fixed_coils, λ_regularize, kwargs...)
+    else
+        @views active_coils = coils[setdiff(eachindex(coils), fixed)]
+        VacuumFields.find_coil_currents!(active_coils, Ψpl_func, dΨpl_dR, dΨpl_dZ; fixed_coils, λ_regularize, kwargs...)
+    end
     set_Ψvac!(canvas)
     return canvas
+end
+
+function setup_Acps_b_offset(canvas::Canvas{T,DT,VC,II,DI,C1,C2}, control::Symbol) where {T,DT<:Real,VC,II,DI,C1,C2}
+    coils, fixed_coils, flux_cps = canvas.coils, canvas.fixed_coils, canvas.flux_cps
+    ctrl_kwargs = (control === :shape) ?
+        (; flux_cps, iso_cps = canvas.iso_cps, saddle_cps = canvas.saddle_cps) :
+        (; flux_cps, iso_cps = canvas.loop_cps, field_cps = canvas.field_cps)
+    @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
+    Acps = VacuumFields.define_A(active_coils; ctrl_kwargs...)
+    b_offset = zeros(DT, size(Acps, 1))
+    fcs = @views coils[fixed_coils]
+    VacuumFields.offset_b!(b_offset; fixed_coils=fcs, ctrl_kwargs...)
+    return Acps, b_offset
 end

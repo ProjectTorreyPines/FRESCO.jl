@@ -1,3 +1,7 @@
+# Helper for constructing Duals with correct tag
+dual_with_partials_like(like_el, value::Real, partials::AbstractVector{<:Real}) =
+    Dual{ForwardDiff.tagtype(like_el)}(value, Tuple(partials))
+
 function search_axis_guess(canvas::Canvas)
     Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
     psisign = sign(Ip)
@@ -24,25 +28,89 @@ end
 
 function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
-    Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
-    psisign = sign(Ip)
 
     # find initial guess
-    Rg, Zg = try
-        # search for a local minimum in the grid
-        search_axis_guess(canvas)
-    catch e
-        if canvas.Raxis > 0.0
-            # use the last known axis location, if valid
-            canvas.Raxis, canvas.Zaxis
-        else
+    Rg, Zg = if canvas.Raxis > 0.0
+        # use the last known axis location, if valid
+        canvas.Raxis, canvas.Zaxis
+    else
+         try
+            search_axis_guess(canvas)
+        catch e
             println("search_axis_guess() reported error: ", e)
             display(plot(canvas))
             error("Could not find magnetic axis guess from grid and no previous axis location available")
         end
     end
-    Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
+
+    return find_critical_point(canvas, Rg, Zg)
+end
+
+grad(x, p) = Interpolations.gradient(p.Ψitp, x[1], x[2])
+hess(x, p) = Interpolations.hessian(p.Ψitp, x[1], x[2])
+const nf = NonlinearSolve.NonlinearFunction(grad; jac = hess)
+
+function find_critical_point(Ψitp::Interpolations.AbstractInterpolation, Rg::Real, Zg::Real)
+    x0 = @SVector[Rg, Zg]
+    prob = NonlinearSolve.NonlinearProblem(nf, x0, (; Ψitp=Ψitp))
+    sol  = NonlinearSolve.solve(prob, NonlinearSolve.SimpleNewtonRaphson())
+    Raxis, Zaxis = sol.u[1], sol.u[2]
+
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+end
+
+function find_critical_point(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Real, VC, II, DI, C1, C2}
+    # Float path
+    # Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
+    # psisign = sign(Ip)
+    # Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
+    # return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+    return find_critical_point(canvas._Ψitp, Rg, Zg)
+end
+
+function find_critical_point(canvas::Canvas{T, DT, VC, II, DI, C1, C2}, Rg::Real, Zg::Real) where {T, DT<:Dual, VC, II, DI, C1, C2}
+     # Dual number path: use implicit differentiation
+    Rs, Zs, Ψ, Ψitp = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp
+
+    # 1) Strip duals and solve with Float interpolant
+    ψ_val = ForwardDiff.value.(Ψ)
+    Rg_val, Zg_val = ForwardDiff.value(Rg), ForwardDiff.value(Zg)
+    itp_val = ψ_interpolant(Rs, Zs, ψ_val)
+    RAf, ZAf, _ = find_critical_point(itp_val, Rg_val, Zg_val)
+
+    # 2) Compute Hessian wrt (r,z) at float axis
+    H = ForwardDiff.hessian(xx -> itp_val(xx[1], xx[2]), [RAf, ZAf])
+    # light diagonal regularization
+    H[1,1] += 1e-9
+    H[2,2] += 1e-9
+
+    # 3)Compute gradient at axis (w.r.t. Ψ)
+    # Use the spline's analytic gradient; returns Duals because coefficients are Dual
+    g_dual = Interpolations.gradient(Ψitp, RAf, ZAf)
+    # NOTE: g_dual is a length-2 Tuple of Duals; its partials encode ∂∇_x f / ∂Ψ · δΨ
+
+    # 4) Extract sensitivities for each AD direction
+    el = Ψ[1, 1]  # any psi element to read AD tag/width
+    K = ForwardDiff.npartials(el)
+    vcols = Vector{Vector{Float64}}(undef, K)
+    for k in 1:K
+        v = Vector{Float64}(undef, 2)
+        @inbounds begin
+            v[1] = ForwardDiff.partials(g_dual[1])[k]
+            v[2] = ForwardDiff.partials(g_dual[2])[k]
+        end
+        vcols[k] = v
+    end
+    δxcols = map(vk -> -H \ vk, vcols)
+
+    # 5) Rewrap axis coords as Duals with computed partials
+    r_partials = map(δx -> δx[1], δxcols)
+    z_partials = map(δx -> δx[2], δxcols)
+    Raxis = dual_with_partials_like(el, RAf, r_partials)
+    Zaxis = dual_with_partials_like(el, ZAf, z_partials)
+
+    value_dual = Ψitp(Raxis, Zaxis)
+    return Raxis, Zaxis, value_dual
 end
 
 function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
@@ -54,17 +122,100 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     axis2bnd = (canvas.Ip >= 0.0) ? :increasing : :decreasing
     Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
                                   PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
-    try
-        canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
-    catch e
-        p = plot(canvas)
-        scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
-        display(p)
-        rethrow(e)
-    end
+    # try
+    canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
+    # catch e
+    #     p = plot(canvas)
+    #     scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
+    #     display(p)
+    #     rethrow(e)
+    # end
 end
 
-psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
+function new_flux_bounds!(canvas::Canvas{T, DT, VC, II, DI, C1, C2}; update_Ψitp::Bool=true) where {T, DT, VC, II, DI, C1, C2}
+    update_Ψitp && update_interpolation!(canvas)
+    Rs, Zs, Ψitp, is_in_wall = canvas.Rs, canvas.Zs, canvas._Ψitp, canvas._is_in_wall
+    gradpsi = canvas._tmp_Ψ
+
+    # Compute |∇Ψ|
+    for (j, z) in enumerate(Zs)
+        for (i, r) in enumerate(Rs)
+            gradpsi[i, j] = (is_in_wall[i, j] ?
+                norm(Interpolations.gradient(Ψitp, r, z)) :
+                0.0)
+        end
+    end
+
+    # Find axis and most-active saddle point
+    Raxis, Zaxis, Ψaxis = NaN, NaN, NaN
+    Rx, Zx, Ψx = NaN, NaN, NaN
+    for (j, z) in enumerate(Zs)
+        jmin, jmax = max(1, j-1), min(length(Zs), j+1)
+        for (i, r) in enumerate(Rs)
+            !is_in_wall[i, j] && continue
+            imin, imax = max(1, i-1), min(length(Rs), i+1)
+            if gradpsi[i, j] == @views minimum(gradpsi[imin:imax, jmin:jmax])
+                # Found a local critical point
+                Rcp, Zcp, Ψcp = find_critical_point(canvas, r, z)
+
+                # check if it's axis or saddle
+                 if det(Interpolations.hessian(Ψitp, Rcp, Zcp)) > 0.0
+                    # magnetic axis
+                    if isnan(Raxis)
+                        Raxis, Zaxis, Ψaxis = Rcp, Zcp, Ψcp
+                    elseif !(isapprox(Raxis, Rcp; atol=step(Rs)) && isapprox(Zaxis, Zcp; atol=step(Zs)))
+                        error("Found multiple magnetic axes: $((Raxis, Zaxis)) and $((Rcp, Zcp))")
+                    end
+                else
+                    # saddle point
+                    if isnan(Rx) || (abs(Ψcp - Ψaxis) < abs(Ψx - Ψaxis))
+                        # first saddle or closest to axis
+                        Rx, Zx, Ψx = Rcp, Zcp, Ψcp
+                    end
+                end
+            end
+        end
+    end
+    @assert !isnan(Raxis) "Could not find magnetic axis!"
+
+    # Check if limited
+    Rw, Zw = canvas.Rw, canvas.Zw
+    klim = -1
+    for (k, (r, z)) in enumerate(zip(Rw, Zw))
+        Ψwall = Ψitp(r, z)
+        if (abs(Ψwall - Ψaxis) < abs(Ψx - Ψaxis))
+            # wall point closer to axis flux
+            # check if flux gradient points towards axis
+            Ψr, Ψz = Interpolations.gradient(Ψitp, r, z)
+            if sign(Ψr * (r - Raxis) + Ψz * (z - Zaxis)) > 0
+                # wall flux is limiting point
+                klim = k
+            end
+        end
+    end
+
+    if klim > 0
+        wall_closed = (Rw[1] == Rw[end]) && (Zw[1] == Zw[end])
+        # refine boundary point
+
+        kmin = (klim > 1) ? klim - 1 : (wall_closed ? length(Rw) - 1 : length(Rw))
+        kmax = (klim < length(Rw)) ? klim + 1 : (wall_closed ? 2 : 1)
+        t = range(-1.0, 1.0, 3)
+        x = @SVector[Rw[kmin], Rw[klim], Rw[kmax]]
+        y = @SVector[Zw[kmin], Zw[klim], Zw[kmax]]
+
+        # interpolate and find t to minimize abs(Ψ - Ψaxis)
+        # ???
+    end
+
+
+    Ψbnd = Ψx
+
+    canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
+end
+
+psinorm(psi::Real, canvas::Canvas) = psinorm(psi, canvas.Ψaxis, canvas.Ψbnd)
+psinorm(psi::Real, Ψaxis::Real, Ψbnd::Real) = (psi - Ψaxis) / (Ψbnd - Ψaxis)
 psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 
 function boundary!(canvas::Canvas)
@@ -90,11 +241,11 @@ function update_bounds!(canvas; update_Ψitp::Bool=true)
     return canvas
 end
 
-function in_plasma_bb(r::Real, z::Real, canvas::Canvas)
-    rmin, rmax = canvas._rextrema
+function in_plasma_bb(r::Real, z::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real})
+    rmin, rmax = rext
     (r < rmin || r > rmax) && return false
 
-    zmin, zmax = canvas._zextrema
+    zmin, zmax = zext
     (z < zmin || z > zmax) && return false
 
     return true
@@ -102,17 +253,22 @@ end
 
 function in_core(r::Real, z::Real, psin::Real, canvas::Canvas,
     ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    rext, zext, bnd = canvas._rextrema, canvas._zextrema, canvas._bnd
+    return in_core(r, z, psin, rext, zext, bnd, ellipse)
+end
 
+function in_core(r::Real, z::Real, psin::Real, rext::Tuple{<:Real, <:Real}, zext::Tuple{<:Real, <:Real},
+    bnd::Vector{<:SVector{2,<:Real}}, ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
     # Check psinorm value
     psin > 1.0 && return false
 
     # Check outside bounding box
-    !in_plasma_bb(r, z, canvas) && return false
+    !in_plasma_bb(r, z, rext, zext) && return false
 
     in_ellipse(r, z, ellipse) && return true
 
     # Finally make sure it's in the boundary
-    return inpolygon((r, z), canvas._bnd) == 1
+    return inpolygon((r, z), bnd) == 1
 end
 
 in_ellipse(r, z, ellipse::Nothing) = false
@@ -123,8 +279,8 @@ function in_ellipse(r::Real, z::Real, ellipse::AbstractVector{<:Real})
     return ((r - R0) / a)^2 + ((z - Z0) / b)^2 <= 1.0
 end
 
-function compute_ellipse(canvas::Canvas)
-    bnd, rext, zext = canvas._bnd, canvas._rextrema, canvas._zextrema
+compute_ellipse(canvas::Canvas) = compute_ellipse(canvas._bnd, canvas._rextrema, canvas._zextrema)
+function compute_ellipse(bnd, rext, zext)
     κ = (zext[2] - zext[1]) / (rext[2] - rext[1])
     R0, Z0 = centroid(bnd)
     radius = p -> sqrt((p[1] - R0)^2 + ((p[2] - Z0) / κ)^2)

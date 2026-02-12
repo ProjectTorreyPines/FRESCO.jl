@@ -1,26 +1,27 @@
 module FRESCO
 
-
 using LinearAlgebra
 import IMAS
 import VacuumFields
-import IMASutils
-using IMASutils: trapz
-using StaticArrays: SVector, @SVector, @SMatrix
+import IMASutils: IMASutils, trapz
+import StaticArrays: StaticArrays, SVector, @SVector, @SMatrix, MVector, @MVector
 import Interpolations
 import DataInterpolations: DataInterpolations, ExtrapolationType
 using PolygonOps: inpolygon, centroid
 import HypergeometricFunctions: _₂F₁ as F21
 using RecipesBase
 using Plots
-using LoopVectorization: @turbo, @tturbo
+import LoopVectorization: @turbo, @tturbo
 using Printf
+import ForwardDiff: ForwardDiff, Dual
+import NonlinearSolve
 
 const μ₀ = π * 4e-7
 const twopi = 2π
 
 include("types.jl")
 include("canvas.jl")
+include("nonlinear.jl")
 include("current.jl")
 include("flux.jl")
 include("flux_surfaces.jl")
