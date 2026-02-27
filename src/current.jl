@@ -282,7 +282,7 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
         for (i,R) in enumerate(Rs)
             for j in eachindex(Zs)
                 if is_inside[i, j]
-                    psin = psinorm(Ψ[i, j], canvas)
+                    psin = clamp(psinorm(Ψ[i, j], canvas), 0.0, 1.0)
                     x = get_x(canvas, profile, psin)
                     Jt[i, j] = -twopi * FFprime(canvas, profile, psin, x) / (R * μ₀)
                 end
@@ -294,7 +294,7 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
         for (i,R) in enumerate(Rs)
             for j in eachindex(Zs)
                 if is_inside[i, j]
-                    psin = psinorm(Ψ[i, j], canvas)
+                    psin = clamp(psinorm(Ψ[i, j], canvas), 0.0, 1.0)
                     x = get_x(canvas, profile, psin)
                     Jt[i, j] += -twopi * R * Pprime(canvas, profile, psin, x)
                 end
@@ -328,7 +328,7 @@ function Jtor!(canvas::Canvas, profile::PprimeFFprime; update_surfaces::Bool, co
     for (i,R) in enumerate(Rs)
         for j in eachindex(Zs)
             if is_inside[i, j]
-                psin = psinorm(Ψ[i, j], canvas)
+                psin = clamp(psinorm(Ψ[i, j], canvas), 0.0, 1.0)
                 x = get_x(canvas, profile, psin)
                 Jt[i, j] = -twopi * (R * Pprime(canvas, profile, psin, x) + FFprime(canvas, profile, psin, x) / (R * μ₀))
             end
@@ -433,7 +433,7 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
             R2 = R ^ 2
             for j in eachindex(Zs)
                 if is_inside[i, j]
-                    psin = psinorm(Ψ[i, j], canvas)
+                    psin = clamp(psinorm(Ψ[i, j], canvas), 0.0, 1.0)
                     gm1_psin = canvas._gm1_itp(psin)
                     x = get_x(canvas, profile, psin)
                     pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin, x)
@@ -465,7 +465,7 @@ function Jtor!(canvas::Canvas, profile::Union{PressureJtoR, PressureJt}; update_
         R2 = R ^ 2
         for j in eachindex(Zs)
             if is_inside[i, j]
-                psin = psinorm(Ψ[i, j], canvas)
+                psin = clamp(psinorm(Ψ[i, j], canvas), 0.0, 1.0)
                 gm1_psin = canvas._gm1_itp(psin)
                 x = get_x(canvas, profile, psin)
                 pterm = twopi * (R2 - 1.0 / gm1_psin) * Pprime(canvas, profile, psin, x)

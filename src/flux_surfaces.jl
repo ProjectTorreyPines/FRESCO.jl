@@ -104,7 +104,7 @@ function in_core(r::Real, z::Real, psin::Real, canvas::Canvas,
     ellipse::Union{Nothing,AbstractVector{<:Real}}=nothing)
 
     # Check psinorm value
-    psin > 1.0 && return false
+    (psin > 1.0 || psin < 0.0) && return false
 
     # Check outside bounding box
     !in_plasma_bb(r, z, canvas) && return false
