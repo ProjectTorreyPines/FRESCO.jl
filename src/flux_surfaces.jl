@@ -1,3 +1,9 @@
+"""
+    search_axis_guess(canvas::Canvas)
+
+Return an `(R, Z)` grid-point guess for the magnetic axis by finding the local Ψ
+extremum inside the wall. Errors if multiple local extrema are found.
+"""
 function search_axis_guess(canvas::Canvas)
     Rs, Zs, Ψ, Ip, is_in_wall = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Ip, canvas._is_in_wall
     psisign = sign(Ip)
@@ -22,6 +28,12 @@ function search_axis_guess(canvas::Canvas)
 end
 
 
+"""
+    find_axis(canvas::Canvas; update_Ψitp=true)
+
+Locate the magnetic axis, returning `(Raxis, Zaxis, Ψaxis)`. Uses `search_axis_guess`
+for the initial grid-point estimate, falling back to the last known axis if that fails.
+"""
 function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
     Rs, Zs, Ip, Ψitp = canvas.Rs, canvas.Zs, canvas.Ip, canvas._Ψitp
@@ -45,6 +57,11 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
     return Raxis, Zaxis, Ψitp(Raxis, Zaxis)
 end
 
+"""
+    flux_bounds!(canvas::Canvas; update_Ψitp=true)
+
+Compute the axis and boundary flux values (`Ψaxis`, `Ψbnd`) and update the canvas in place.
+"""
 function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     update_Ψitp && update_interpolation!(canvas)
     Rs, Zs, Ψ, Rw, Zw, Ψitp, r_cache, z_cache = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Rw, canvas.Zw, canvas._Ψitp, canvas._r_cache, canvas._z_cache
@@ -52,13 +69,14 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     # BCL 7/31/24 - Potential error here with Ψbnd as that's supposed to be the "original" psi on the boundary
     #               I'm not sure how to handle that, though hopefully it gets fixed on the IMAS side
     axis2bnd = (canvas.Ip >= 0.0) ? :increasing : :decreasing
-    Ψbnd = IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
-                                  PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
+    Ψbnd =
+        IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
+            PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
     try
         canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
     catch e
         p = plot(canvas)
-        scatter!([Raxis], [Zaxis], markersize=8, color=:cyan)
+        scatter!([Raxis], [Zaxis]; markersize=8, color=:cyan)
         display(p)
         rethrow(e)
     end
@@ -67,6 +85,12 @@ end
 psinorm(psi::Real, canvas::Canvas) = (psi - canvas.Ψaxis) / (canvas.Ψbnd - canvas.Ψaxis)
 psinorm(canvas::Canvas) = range(0.0, 1.0, length(canvas.surfaces))
 
+"""
+    boundary!(canvas::Canvas)
+
+Trace the last closed flux surface and update `_bnd`, `_rextrema`, `_zextrema`, and
+the `_is_inside` mask for all grid points.
+"""
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd
     is_inside, r_cache, z_cache = canvas._is_inside, canvas._r_cache, canvas._z_cache
@@ -84,9 +108,31 @@ function boundary!(canvas::Canvas)
     end
 end
 
+"""
+    find_true_axis!(canvas::Canvas)
+
+Refine the magnetic axis after the boundary is known. `find_axis` may converge to a
+spurious local Ψ extremum near the axis; this function searches all points inside the
+LCFS (per `_is_inside`) for the global extremum, ensuring the true axis is found.
+"""
+function find_true_axis!(canvas::Canvas)
+    Rs, Zs, Ψ, Ψitp, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp, canvas._is_inside
+    psisign = sign(canvas.Ip)
+    I = CartesianIndices(Ψ)
+    idx = argmin(i -> psisign * Ψ[i], i for i in I if is_inside[i])
+    Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rs[idx[1]], zguess=Zs[idx[2]])
+    return canvas.Raxis, canvas.Zaxis, canvas.Ψaxis = Raxis, Zaxis, Ψitp(Raxis, Zaxis)
+end
+
+"""
+    update_bounds!(canvas; update_Ψitp=true)
+
+Run the full boundary update sequence: `flux_bounds!` → `boundary!` → `find_true_axis!`.
+"""
 function update_bounds!(canvas; update_Ψitp::Bool=true)
     flux_bounds!(canvas; update_Ψitp)
     boundary!(canvas)
+    find_true_axis!(canvas)
     return canvas
 end
 
