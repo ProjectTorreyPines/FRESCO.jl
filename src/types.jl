@@ -1,5 +1,20 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
+@kwdef mutable struct CoilState{T}
+    flux::MVector{2, T} = zeros(MVector{2, Float64})
+    current_per_turn::MVector{2, T} = zeros(MVector{2, Float64})
+    voltage::T = zero(T)
+    resistance::T = zero(T)
+end
+
+function CoilState(coil; initial_flux::T=0.0, voltage::T=0.0) where {T <: Real}
+    flux = MVector{2, T}(initial_flux, zero(T))
+    current_per_turn = MVector{2, T}(VacuumFields.current_per_turn(coil), zero(T))
+    resistance = VacuumFields.resistance(coil)
+    return CoilState(; flux, current_per_turn, voltage, resistance)
+end
+
+
 @kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
                       C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}

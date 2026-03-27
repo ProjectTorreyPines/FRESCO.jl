@@ -6,7 +6,7 @@ import IMAS
 import VacuumFields
 import IMASutils
 using IMASutils: trapz
-using StaticArrays: SVector, @SVector, @SMatrix
+using StaticArrays: SVector, @SVector, @SMatrix, MVector, @MVector
 import Interpolations
 import DataInterpolations: DataInterpolations, ExtrapolationType
 using PolygonOps: inpolygon, centroid
