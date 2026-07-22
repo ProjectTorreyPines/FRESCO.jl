@@ -235,17 +235,12 @@ function compute_Gbnd(Rs::AbstractRange{T}, Zs::AbstractRange{T}) where {T<:Real
     return G
 end
 
-# 2D cubic interpolant of Ψ over the (R, Z) grid. ZeroCurvBC reproduces the old
-# Interpolations `Cubic(Line())` natural boundary (S''=0 at the edges); ExtendExtrap
-# maps the old `Line()` extrapolation. FRESCO passes this into IMAS tracing/axis
-# routines, which take the FastInterpolations fast path for the gradient seam.
+# 2D natural-cubic interpolant of Ψ over the (R, Z) grid, extended past the edges
 function ψ_interpolant(r, z, psi)
     return cubic_interp((r, z), psi; bc=ZeroCurvBC(), extrap=ExtendExtrap())
 end
 
-# FastInterpolations interpolants are immutable, so there is no in-place coefficient
-# refresh (the old Interpolations `ct!`/`prefilter!` trick). Rebuilding fresh is cheap
-# (~47 µs on a 129² grid) and is what IMAS does when Ψ changes.
+# rebuild the Ψ interpolant after Ψ changes (interpolant is immutable, so build fresh)
 function update_interpolation!(canvas::Canvas)
     canvas._Ψitp = ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ)
     return canvas._Ψitp

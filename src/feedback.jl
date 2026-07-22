@@ -54,7 +54,7 @@ end
 
 function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Real)
     Ψitp, vs_circuit, rs_circuit = canvas._Ψitp, canvas._vs_circuit, canvas._rs_circuit
-    # FastInterpolations.gradient returns a Tuple; wrap as SVector for the J \ gradΨ solve
+    # gradient is a Tuple; SVector so J \ gradΨ works
     gradΨ = SVector(FastInterpolations.gradient(Ψitp, (Rtarget, Ztarget)))
     J = @SMatrix[VacuumFields.dG_dR(rs_circuit, Rtarget, Ztarget) VacuumFields.dG_dR(vs_circuit, Rtarget, Ztarget);
                  VacuumFields.dG_dZ(rs_circuit, Rtarget, Ztarget) VacuumFields.dG_dZ(vs_circuit, Rtarget, Ztarget)]

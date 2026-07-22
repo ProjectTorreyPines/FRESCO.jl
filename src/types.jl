@@ -106,19 +106,14 @@ function default_is_in_wall(Rs, Zs, Rw, Zw)
 end
 
 function default_itp(surfaces::Vector{IMAS.SimpleSurface{T}}) where {T <: Real}
-    # Grid must match psinorm(canvas) = range(0,1,length(surfaces)) so this placeholder
-    # has the same concrete type as the splines the update_*! functions later assign
-    # (all seven canvas FSA fields share the single type parameter `DI`).
+    # grid matches psinorm(canvas) so this placeholder shares the concrete type `DI`
+    # with the splines the update_*! functions assign to all seven FSA fields
     x = range(zero(T), one(T), length(surfaces))
     return fsa_cubic_itp(x, zeros(T, length(surfaces)))
 end
 
-# Single construction site for the canvas flux-surface-average splines. Mirrors the
-# old DataInterpolations.CubicSpline(vals, x; extrapolation=None): natural cubic spline
-# (ZeroCurvBC = S''=0 at both ends), no extrapolation. Note the reversed argument order.
+# canvas flux-surface-average splines: natural cubic (S''=0 at ends), no extrapolation
 fsa_cubic_itp(x, vals) = cubic_interp(x, vals; bc=ZeroCurvBC(), extrap=NoExtrap())
 
-# Construction site for the profile splines built from IMAS 1D grids. Mirrors the old
-# DataInterpolations.CubicSpline(vals, x; extrapolation=Extension): natural cubic spline,
-# extending the boundary cubic outside the domain (ExtendExtrap). Reversed argument order.
+# profile splines from IMAS 1D grids: natural cubic, boundary cubic extended past the domain
 profile_cubic_itp(x, vals) = cubic_interp(x, vals; bc=ZeroCurvBC(), extrap=ExtendExtrap())
