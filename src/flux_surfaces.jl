@@ -195,7 +195,7 @@ function update_Vp!(canvas::Canvas)
         Vp[k] = sign_dpsi * surfaces[k].int_fluxexpansion_dl
     end
     x = psinorm(canvas)
-    canvas._Vp_itp = DataInterpolations.CubicSpline(Vp, x; extrapolation=ExtrapolationType.None)
+    canvas._Vp_itp = fsa_cubic_itp(x, Vp)
     return canvas
 end
 
@@ -207,7 +207,7 @@ function update_gm1!(canvas::Canvas)
         gm1[k] = IMAS.flux_surface_avg(f1, surfaces[k])
     end
     x = psinorm(canvas)
-    canvas._gm1_itp = DataInterpolations.CubicSpline(gm1, x; extrapolation=ExtrapolationType.None)
+    canvas._gm1_itp = fsa_cubic_itp(x, gm1)
     return canvas
 end
 
@@ -219,7 +219,7 @@ function update_gm9!(canvas::Canvas)
         gm9[k] = IMAS.flux_surface_avg(f9, surfaces[k])
     end
     x = psinorm(canvas)
-    canvas._gm9_itp = DataInterpolations.CubicSpline(gm9, x; extrapolation=ExtrapolationType.None)
+    canvas._gm9_itp = fsa_cubic_itp(x, gm9)
     return canvas
 end
 
@@ -231,7 +231,7 @@ function update_Fpol!(canvas::Canvas, profile::AbstractCurrentProfile)
     IMAS.cumtrapz!(Fpol, psi1d, FFprime.(Ref(canvas), Ref(profile), x))
     Fpol .= 2 .* Fpol .- Fpol[end] .+ Fbnd^2
     Fpol .= sign(Fbnd) .* sqrt.(Fpol) # now take sqrt with proper sign
-    canvas._Fpol_itp = DataInterpolations.CubicSpline(Fpol, x; extrapolation=ExtrapolationType.None)
+    canvas._Fpol_itp = fsa_cubic_itp(x, Fpol)
     return canvas
 end
 
@@ -251,7 +251,7 @@ function update_rho!(canvas::Canvas)
     rho[1] = 0.0
     rho[end] = 1.0
 
-    canvas._rho_itp = DataInterpolations.CubicSpline(rho, x; extrapolation=ExtrapolationType.None)
+    canvas._rho_itp = fsa_cubic_itp(x, rho)
 end
 
 # This is <|∇Ψ|^2 / R^2>, so like the gm2 metric in IMAS but for Ψ not rho_tor
@@ -261,7 +261,7 @@ function update_gm2p!(canvas::Canvas, profile::AbstractCurrentProfile)
     fac = twopi * μ₀ * (Ψbnd - Ψaxis)
     IMAS.cumtrapz!(gm2p, x, Vp .* JtoR.(Ref(canvas), Ref(profile), x))
     gm2p .*= fac ./ Vp
-    canvas._gm2p_itp = DataInterpolations.CubicSpline(gm2p, x; extrapolation=ExtrapolationType.None)
+    canvas._gm2p_itp = fsa_cubic_itp(x, gm2p)
     return canvas
 end
 
@@ -271,7 +271,7 @@ function update_area!(canvas::Canvas)
     psi1d = range(Ψaxis, Ψbnd, length(x))
     darea_dpsi = (k, x) -> Vp[k] * gm9[k] / 2π
     IMAS.cumtrapz!(area, psi1d, darea_dpsi)
-    canvas._area_itp = DataInterpolations.CubicSpline(area, x; extrapolation=ExtrapolationType.None)
+    canvas._area_itp = fsa_cubic_itp(x, area)
     return canvas
 end
 
