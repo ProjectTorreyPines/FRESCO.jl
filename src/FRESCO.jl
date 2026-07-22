@@ -7,7 +7,6 @@ import VacuumFields
 import IMASutils
 using IMASutils: trapz
 using StaticArrays: SVector, @SVector, @SMatrix
-import Interpolations
 import FastInterpolations: FastInterpolations, cubic_interp, ZeroCurvBC, NoExtrap, ExtendExtrap, DerivOp
 using PolygonOps: inpolygon, centroid
 import HypergeometricFunctions: _₂F₁ as F21
