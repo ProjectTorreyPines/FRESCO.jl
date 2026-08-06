@@ -235,26 +235,14 @@ function compute_Gbnd(Rs::AbstractRange{T}, Zs::AbstractRange{T}) where {T<:Real
     return G
 end
 
-const ITP = Interpolations
+# 2D natural-cubic interpolant of Ψ over the (R, Z) grid, extended past the edges
 function ψ_interpolant(r, z, psi)
-    return ITP.scale(ITP.interpolate(psi, ITP.BSpline(ITP.Cubic(ITP.Line(ITP.OnGrid())))), r, z)
-    #Interpolations.cubic_spline_interpolation((r, z), psi; extrapolation_bc=Interpolations.Line())
+    return cubic_interp((r, z), psi; bc=ZeroCurvBC(), extrap=ExtendExtrap())
 end
 
-# This gets into the weeds of how Interpolations works to eliminate some unnecessary allocation in prefilter()
-# If it every breaks, we can go back to the first commented line
+# rebuild the Ψ interpolant after Ψ changes (interpolant is immutable, so build fresh)
 function update_interpolation!(canvas::Canvas)
-    # BCL 11/20/24: Use this if it breaks
-    # canvas._Ψitp = ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ)
-
-    itp = canvas._Ψitp.itp
-    A = canvas.Ψ
-    T = eltype(A)
-    coefs = itp.coefs
-    fill!(coefs, zero(T))
-    indsA = axes(A)
-    Interpolations.ct!(coefs, indsA, A, indsA)
-    Interpolations.prefilter!(T, coefs, itp.it)
+    canvas._Ψitp = ψ_interpolant(canvas.Rs, canvas.Zs, canvas.Ψ)
     return canvas._Ψitp
 end
 

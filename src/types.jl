@@ -1,6 +1,6 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
-@kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:Interpolations.AbstractInterpolation, DI<:DataInterpolations.AbstractInterpolation,
+@kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:FastInterpolations.AbstractInterpolant, DI<:FastInterpolations.AbstractInterpolant1D,
                       C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
     Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
     Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
@@ -106,6 +106,14 @@ function default_is_in_wall(Rs, Zs, Rw, Zw)
 end
 
 function default_itp(surfaces::Vector{IMAS.SimpleSurface{T}}) where {T <: Real}
+    # grid matches psinorm(canvas) so this placeholder shares the concrete type `DI`
+    # with the splines the update_*! functions assign to all seven FSA fields
     x = range(zero(T), one(T), length(surfaces))
-    return DataInterpolations.CubicSpline(zero(x), x; extrapolation=ExtrapolationType.None)
+    return fsa_cubic_itp(x, zeros(T, length(surfaces)))
 end
+
+# canvas flux-surface-average splines: natural cubic (S''=0 at ends), no extrapolation
+fsa_cubic_itp(x, vals) = cubic_interp(x, vals; bc=ZeroCurvBC(), extrap=NoExtrap())
+
+# profile splines from IMAS 1D grids: natural cubic, boundary cubic extended past the domain
+profile_cubic_itp(x, vals) = cubic_interp(x, vals; bc=ZeroCurvBC(), extrap=ExtendExtrap())

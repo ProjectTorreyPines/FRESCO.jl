@@ -217,26 +217,26 @@ end
 function plasma_flux(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
     return in_domain(x, y, canvas) ? canvas._Ψitp(x, y) - coil_flux(canvas, x, y) : plasma_flux_external(canvas, x, y)
 end
-function plasma_flux(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
+function plasma_flux(canvas::Canvas, x::Real, y::Real, Ψpl_itp::FastInterpolations.AbstractInterpolant)
     return in_domain(x, y, canvas) ? Ψpl_itp(x, y) : plasma_flux_external(canvas, x, y)
 end
 
 function plasma_dψdR(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
-    ∇ = Interpolations.gradient
-    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, x, y)[1] - coil_dψdR(canvas, x, y) : plasma_dψdR_external(canvas, x, y)
+    ∇ = FastInterpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, (x, y))[1] - coil_dψdR(canvas, x, y) : plasma_dψdR_external(canvas, x, y)
 end
-function plasma_dψdR(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
-    ∇ = Interpolations.gradient
-    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, x, y)[1] : plasma_dψdR_external(canvas, x, y)
+function plasma_dψdR(canvas::Canvas, x::Real, y::Real, Ψpl_itp::FastInterpolations.AbstractInterpolant)
+    ∇ = FastInterpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, (x, y))[1] : plasma_dψdR_external(canvas, x, y)
 end
 
 function plasma_dψdZ(canvas::Canvas, x::Real, y::Real, blank::Nothing=nothing)
-    ∇ = Interpolations.gradient
-    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, x, y)[2] - coil_dψdZ(canvas, x, y) : plasma_dψdZ_external(canvas, x, y)
+    ∇ = FastInterpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(canvas._Ψitp, (x, y))[2] - coil_dψdZ(canvas, x, y) : plasma_dψdZ_external(canvas, x, y)
 end
-function plasma_dψdZ(canvas::Canvas, x::Real, y::Real, Ψpl_itp::Interpolations.AbstractInterpolation)
-    ∇ = Interpolations.gradient
-    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, x, y)[2] : plasma_dψdZ_external(canvas, x, y)
+function plasma_dψdZ(canvas::Canvas, x::Real, y::Real, Ψpl_itp::FastInterpolations.AbstractInterpolant)
+    ∇ = FastInterpolations.gradient
+    return in_domain(x, y, canvas) ? ∇(Ψpl_itp, (x, y))[2] : plasma_dψdZ_external(canvas, x, y)
 end
 
 function flux(canvas::Canvas, x::Real, y::Real; update_Ψitp::Bool=true)

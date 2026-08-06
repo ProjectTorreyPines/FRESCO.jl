@@ -26,7 +26,7 @@ end
 
 function vertical_feedback!(canvas::Canvas, Ztarget::Real, αstar::Real)
     Raxis, Ψitp, vs_circuit = canvas.Raxis, canvas._Ψitp, canvas._vs_circuit
-    dΨ_dZ = Interpolations.gradient(Ψitp, Raxis, Ztarget)[2]
+    dΨ_dZ = FastInterpolations.gradient(Ψitp, (Raxis, Ztarget))[2]
     Gz = VacuumFields.dG_dZ(vs_circuit, Raxis, Ztarget)
     dI = - αstar * dΨ_dZ / (2π * μ₀ * Gz)
     remove_flux!(canvas, vs_circuit)
@@ -40,7 +40,7 @@ end
 
 function radial_feedback!(canvas::Canvas, Rtarget::Real, αstar::Real)
     Zaxis, Ψitp, rs_circuit = canvas.Zaxis, canvas._Ψitp, canvas._rs_circuit
-    dΨ_dR = Interpolations.gradient(Ψitp, Rtarget, Zaxis)[1]
+    dΨ_dR = FastInterpolations.gradient(Ψitp, (Rtarget, Zaxis))[1]
     Gr = VacuumFields.dG_dR(rs_circuit, Rtarget, Zaxis)
     dI = - αstar * dΨ_dR / (2π * μ₀ * Gr)
     remove_flux!(canvas, rs_circuit)
@@ -54,7 +54,8 @@ end
 
 function axis_feedback!(canvas::Canvas, Rtarget::Real, Ztarget::Real, αstar::Real)
     Ψitp, vs_circuit, rs_circuit = canvas._Ψitp, canvas._vs_circuit, canvas._rs_circuit
-    gradΨ = Interpolations.gradient(Ψitp, Rtarget, Ztarget)
+    # gradient is a Tuple; SVector so J \ gradΨ works
+    gradΨ = SVector(FastInterpolations.gradient(Ψitp, (Rtarget, Ztarget)))
     J = @SMatrix[VacuumFields.dG_dR(rs_circuit, Rtarget, Ztarget) VacuumFields.dG_dR(vs_circuit, Rtarget, Ztarget);
                  VacuumFields.dG_dZ(rs_circuit, Rtarget, Ztarget) VacuumFields.dG_dZ(vs_circuit, Rtarget, Ztarget)]
 
