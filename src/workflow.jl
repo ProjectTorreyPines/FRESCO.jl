@@ -111,7 +111,10 @@ function _solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin
     end
 
     if !converged && tolerance > 0.0
-        sum(debug) > 0 && @warn "FRESCO did not converge to $(error_outer) > $(tolerance) in $(Nout) iterations"
+        # Always surface non-convergence: callers that ignore the return code
+        # (e.g. actor loops) otherwise finalize a half-converged canvas with no
+        # trace in the logs. maxlog keeps a diverging time loop from flooding.
+        @warn "FRESCO did not converge to $(error_outer) > $(tolerance) in $(Nout) iterations" maxlog = 20
         return 1
     end
 
