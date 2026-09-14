@@ -48,9 +48,9 @@ function find_axis(canvas::Canvas; update_Ψitp::Bool=true)
             # use the last known axis location, if valid
             canvas.Raxis, canvas.Zaxis
         else
-            println("search_axis_guess() reported error: ", e)
-            display(plot(canvas))
-            error("Could not find magnetic axis guess from grid and no previous axis location available")
+            # No plotting here: in headless runs (GKS) a display() hangs the
+            # process long enough to break real-time couplings.
+            error("Could not find magnetic axis guess from grid and no previous axis location available: search_axis_guess() reported ", e)
         end
     end
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rg, zguess=Zg)
@@ -72,13 +72,15 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     Ψbnd =
         IMAS.find_psi_boundary(Rs, Zs, Ψ, Ψaxis, axis2bnd, Raxis, Zaxis, Rw, Zw, r_cache, z_cache;
             PSI_interpolant=Ψitp, raise_error_on_not_open=false, raise_error_on_not_closed=false).last_closed
-    try
+    if Ψbnd === nothing
+        # No closed flux surface on this iterate. Keep the previous (finite)
+        # Ψbnd so the Picard iteration can relax back instead of crashing with
+        # a MethodError assigning `nothing` into a Float64; the enclosing
+        # solve! reports non-convergence if the iterate never recovers.
+        @warn "FRESCO flux_bounds!: no closed flux surface on this iterate — keeping previous Ψbnd" maxlog = 20
+        canvas.Raxis, canvas.Zaxis, canvas.Ψaxis = Raxis, Zaxis, Ψaxis
+    else
         canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
-    catch e
-        p = plot(canvas)
-        scatter!([Raxis], [Zaxis]; markersize=8, color=:cyan)
-        display(p)
-        rethrow(e)
     end
 end
 
@@ -94,7 +96,17 @@ the `_is_inside` mask for all grid points.
 function boundary!(canvas::Canvas)
     Rs, Zs, Ψ, Raxis, Zaxis, Ψaxis, Ψbnd = canvas.Rs, canvas.Zs, canvas.Ψ, canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd
     is_inside, r_cache, z_cache = canvas._is_inside, canvas._r_cache, canvas._z_cache
-    r, z = IMASutils.contour_from_midplane!(r_cache, z_cache, Ψ, Rs, Zs, Ψbnd, Raxis, Zaxis, Ψaxis)
+    r, z = try
+        IMASutils.contour_from_midplane!(r_cache, z_cache, Ψ, Rs, Zs, Ψbnd, Raxis, Zaxis, Ψaxis)
+    catch e
+        # A degenerate iterate can put the axis (or the Ψbnd level) outside the
+        # grid and the marching contour indexes off the canvas (BoundsError at
+        # [0,0]/[0,N]). Keep the previous boundary if one exists so the Picard
+        # iteration can recover; rethrow on the first call where there is none.
+        (e isa BoundsError && !isempty(canvas._bnd)) || rethrow(e)
+        @warn "FRESCO boundary!: LCFS contour left the grid — keeping previous boundary" maxlog = 20
+        return canvas
+    end
     canvas._bnd = [@SVector[r[k], z[k]] for k in eachindex(r)]
     canvas._rextrema = extrema(r)
     canvas._zextrema = extrema(z)
@@ -119,6 +131,13 @@ function find_true_axis!(canvas::Canvas)
     Rs, Zs, Ψ, Ψitp, is_inside = canvas.Rs, canvas.Zs, canvas.Ψ, canvas._Ψitp, canvas._is_inside
     psisign = sign(canvas.Ip)
     I = CartesianIndices(Ψ)
+    if !any(is_inside)
+        # Degenerate iterate: no grid point classified inside the LCFS. Keep
+        # the unrefined axis from flux_bounds! instead of an empty argmin
+        # (ArgumentError); the enclosing solve! reports non-convergence.
+        @warn "FRESCO find_true_axis!: no grid points inside the LCFS — keeping unrefined axis" maxlog = 20
+        return canvas.Raxis, canvas.Zaxis, canvas.Ψaxis
+    end
     idx = argmin(i -> psisign * Ψ[i], i for i in I if is_inside[i])
     Raxis, Zaxis = IMAS.find_magnetic_axis(Rs, Zs, Ψitp, psisign; rguess=Rs[idx[1]], zguess=Zs[idx[2]])
     return canvas.Raxis, canvas.Zaxis, canvas.Ψaxis = Raxis, Zaxis, Ψitp(Raxis, Zaxis)
