@@ -107,6 +107,13 @@ function boundary!(canvas::Canvas)
         @warn "FRESCO boundary!: LCFS contour left the grid — keeping previous boundary" maxlog = 20
         return canvas
     end
+    if isempty(r)
+        # contour_from_midplane! can also come back EMPTY without throwing
+        # (post-disruption / degenerate levels): same recovery as above.
+        isempty(canvas._bnd) && error("FRESCO boundary!: empty LCFS contour and no previous boundary to fall back on")
+        @warn "FRESCO boundary!: empty LCFS contour — keeping previous boundary" maxlog = 20
+        return canvas
+    end
     canvas._bnd = [@SVector[r[k], z[k]] for k in eachindex(r)]
     canvas._rextrema = extrema(r)
     canvas._zextrema = extrema(z)
