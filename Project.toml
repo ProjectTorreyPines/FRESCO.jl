@@ -1,7 +1,7 @@
 name = "FRESCO"
 uuid = "f2db6eb9-2c54-4c18-912b-ce467796777a"
 authors = ["Brendan Lyons <lyonsbc@fusion.gat.com>"]
-version = "0.7.3"
+version = "0.7.4"
 
 [deps]
 FastInterpolations = "9ea80cae-fc13-4c00-8066-6eaedb12f34b"
