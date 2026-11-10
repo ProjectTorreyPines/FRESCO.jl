@@ -1,9 +1,11 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
+# `RG` is the type of the grid ranges: a `StepRangeLen` for Float64, and whatever `range` gives for other
+# element types (e.g. a `LinRange` of dual numbers when the canvas carries derivatives)
 @kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:FastInterpolations.AbstractInterpolant, DI<:FastInterpolations.AbstractInterpolant1D,
-                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
-    Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit, RG<:AbstractRange{T}}
+    Rs::RG
+    Zs::RG
     Ψ::Matrix{T} = zeros(eltype(Rs), length(Rs), length(Zs))
     Ip::T
     Fbnd::T
