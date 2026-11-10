@@ -25,7 +25,7 @@ const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf
     surfaces::Vector{IMAS.SimpleSurface{T}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
-    λ_regularize::T = 1e-14
+    λ_regularize::T = eltype(Rs)(1e-14)
     _Ψpl::Matrix{T} = zero(Ψ)
     _Ψvac::Matrix{T} = zero(Ψ)
     _Gbnd::Matrix{T} = compute_Gbnd(Rs, Zs)
@@ -110,7 +110,7 @@ end
 function default_itp(surfaces::Vector{IMAS.SimpleSurface{T}}) where {T <: Real}
     # grid matches psinorm(canvas) so this placeholder shares the concrete type `DI`
     # with the splines the update_*! functions assign to all seven FSA fields
-    x = range(zero(T), one(T), length(surfaces))
+    x = range(0.0, 1.0, length(surfaces)) # always plain floats, as psinorm(canvas)
     return fsa_cubic_itp(x, zeros(T, length(surfaces)))
 end
 

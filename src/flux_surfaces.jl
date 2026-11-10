@@ -75,6 +75,7 @@ function flux_bounds!(canvas::Canvas; update_Ψitp::Bool=true)
     try
         canvas.Raxis, canvas.Zaxis, canvas.Ψaxis, canvas.Ψbnd = Raxis, Zaxis, Ψaxis, Ψbnd
     catch e
+        eltype(Ψ) <: AbstractFloat || rethrow(e) # the diagnostic plot is only for plain floats
         p = plot(canvas)
         scatter!([Raxis], [Zaxis]; markersize=8, color=:cyan)
         display(p)
