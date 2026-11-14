@@ -34,7 +34,7 @@ function solve!(canvas::Canvas, profile::AbstractCurrentProfile, Nout::Int, Nin:
         coils = canvas.coils
         @views active_coils = isempty(fixed_coils) ? coils : coils[setdiff(eachindex(coils), fixed_coils)]
         Acps = VacuumFields.define_A(active_coils; canvas.flux_cps, canvas.iso_cps, canvas.saddle_cps, canvas.field_cps)
-        b_offset = zeros(size(Acps, 1))
+        b_offset = zeros(eltype(Acps), size(Acps, 1))
         fcs = @views coils[fixed_coils]
         VacuumFields.offset_b!(b_offset; fixed_coils=fcs, canvas.flux_cps, canvas.iso_cps, canvas.saddle_cps, canvas.field_cps)
         return _solve!(canvas, profile, Nout, Nin; debug, relax, tolerance, control, compute_Ip_from, initialize_current, fixed_coils, Acps, b_offset)

@@ -240,14 +240,17 @@ end
 # PprimeFFprime
 #******************
 
-mutable struct PprimeFFprime{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D} <: AbstractCurrentProfile
+# scale factor 1 in the number type that a profile interpolant returns (Float64, or e.g. a dual number)
+unit_scale(itp::FastInterpolations.AbstractInterpolant1D) = one(itp(0.5))
+
+mutable struct PprimeFFprime{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D, S<:Real} <: AbstractCurrentProfile
     pprime::F1
     ffprime::F2
-    ffp_scale::Float64
+    ffp_scale::S
     grid::Symbol
 end
 
-PprimeFFprime(pprime::FastInterpolations.AbstractInterpolant1D, ffprime::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PprimeFFprime(pprime, ffprime, 1.0, grid)
+PprimeFFprime(pprime::FastInterpolations.AbstractInterpolant1D, ffprime::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PprimeFFprime(pprime, ffprime, unit_scale(ffprime), grid)
 
 function PprimeFFprime(dd::IMAS.dd; grid::Symbol=:psi_norm)
     eqt1d = dd.equilibrium.time_slice[].profiles_1d
@@ -343,14 +346,14 @@ end
 # PressureJt and PressureJtoR
 #********************************
 
-mutable struct PressureJtoR{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D} <: AbstractCurrentProfile
+mutable struct PressureJtoR{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D, S<:Real} <: AbstractCurrentProfile
     pressure::F1
     JtoR::F2 # <Jt / R>
-    J_scale::Float64
+    J_scale::S
     grid::Symbol
 end
 
-PressureJtoR(pressure::FastInterpolations.AbstractInterpolant1D, JtoR::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PressureJtoR(pressure, JtoR, 1.0, grid)
+PressureJtoR(pressure::FastInterpolations.AbstractInterpolant1D, JtoR::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PressureJtoR(pressure, JtoR, unit_scale(JtoR), grid)
 
 function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:psi_norm)
     @assert j_p_from in (:equilibrium, :core_profiles)
@@ -370,14 +373,14 @@ function PressureJtoR(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:
     return PressureJtoR(pressure, JtoR, grid)
 end
 
-mutable struct PressureJt{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D} <: AbstractCurrentProfile
+mutable struct PressureJt{F1<:FastInterpolations.AbstractInterpolant1D, F2<:FastInterpolations.AbstractInterpolant1D, S<:Real} <: AbstractCurrentProfile
     pressure::F1
     Jt::F2 # <Jt / R> / <1 / R>
-    J_scale::Float64
+    J_scale::S
     grid::Symbol
 end
 
-PressureJt(pressure::FastInterpolations.AbstractInterpolant1D, Jt::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PressureJt(pressure, Jt, 1.0, grid)
+PressureJt(pressure::FastInterpolations.AbstractInterpolant1D, Jt::FastInterpolations.AbstractInterpolant1D, grid::Symbol=:psi_norm) = PressureJt(pressure, Jt, unit_scale(Jt), grid)
 
 function PressureJt(dd::IMAS.dd; j_p_from::Symbol=:equilibrium, grid::Symbol=:psi_norm)
     @assert j_p_from in (:equilibrium, :core_profiles)
