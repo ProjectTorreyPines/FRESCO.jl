@@ -17,7 +17,7 @@ function Canvas(dd::IMAS.dd{T}, Nr::Int, Nz::Int=Nr; kwargs...) where {T<:Real}
     return canvas
 end
 
-function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) where {T<:Real}
+function Canvas(dd::IMAS.dd{T}, Rs::AbstractRange, Zs::AbstractRange; kwargs...) where {T<:Real}
     eqt = dd.equilibrium.time_slice[]
     eqt2d = IMAS.findfirst(:rectangular, eqt.profiles_2d)
     if !isnothing(eqt2d)
@@ -38,7 +38,7 @@ function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen; kwargs...) w
     return Canvas(dd, Rs, Zs, Ψ; kwargs...)
 end
 
-function Canvas(dd::IMAS.dd{T}, Rs::StepRangeLen, Zs::StepRangeLen, Ψ::Matrix{T};
+function Canvas(dd::IMAS.dd{T}, Rs::AbstractRange, Zs::AbstractRange, Ψ::Matrix{T};
     wall_r::Vector{T}=T[],
     wall_z::Vector{T}=T[],
     coils=nothing,

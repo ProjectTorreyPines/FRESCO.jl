@@ -1,9 +1,11 @@
 const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf_active__coil, IMAS.pf_active__coil___element}}
 
+# `RG` is the type of the grid ranges: a `StepRangeLen` for Float64, and whatever `range` gives for other
+# element types (e.g. a `LinRange` of dual numbers when the canvas carries derivatives)
 @kwdef mutable struct Canvas{T<:Real, VC<:CoilVectorType, II<:FastInterpolations.AbstractInterpolant, DI<:FastInterpolations.AbstractInterpolant1D,
-                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit}
-    Rs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
-    Zs::StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePrecision{T}, Int}
+                      C1<:VacuumFields.AbstractCircuit, C2<:VacuumFields.AbstractCircuit, RG<:AbstractRange{T}}
+    Rs::RG
+    Zs::RG
     Ψ::Matrix{T} = zeros(eltype(Rs), length(Rs), length(Zs))
     Ip::T
     Fbnd::T
@@ -23,7 +25,7 @@ const CoilVectorType = AbstractVector{<:Union{VacuumFields.AbstractCoil, IMAS.pf
     surfaces::Vector{IMAS.SimpleSurface{T}} = Vector{IMAS.SimpleSurface{eltype(Rs)}}(undef, length(Rs) - 1)
     Green_table::Array{T,3} = VacuumFields.Green_table(Rs, Zs, coils)
     fixed_coils::Vector{Int} = Int[]
-    λ_regularize::T = 1e-14
+    λ_regularize::T = eltype(Rs)(1e-14)
     _Ψpl::Matrix{T} = zero(Ψ)
     _Ψvac::Matrix{T} = zero(Ψ)
     _Gbnd::Matrix{T} = compute_Gbnd(Rs, Zs)
@@ -108,7 +110,7 @@ end
 function default_itp(surfaces::Vector{IMAS.SimpleSurface{T}}) where {T <: Real}
     # grid matches psinorm(canvas) so this placeholder shares the concrete type `DI`
     # with the splines the update_*! functions assign to all seven FSA fields
-    x = range(zero(T), one(T), length(surfaces))
+    x = range(0.0, 1.0, length(surfaces)) # always plain floats, as psinorm(canvas)
     return fsa_cubic_itp(x, zeros(T, length(surfaces)))
 end
 

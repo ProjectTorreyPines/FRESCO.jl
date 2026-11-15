@@ -56,3 +56,4 @@ gm1 = canvas._gm1_itp(psin)
     jtor = FRESCO.JtoR(canvas, profile, psin)
     @test jtor ≈ -2π * (pprime + ffprime * gm1 / FRESCO.μ₀)
 end
+include("runtests_dual.jl")
